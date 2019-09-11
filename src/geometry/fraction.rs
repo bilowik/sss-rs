@@ -1,6 +1,5 @@
 use num_bigint_dig::{BigInt, Sign};
 use lazy_static::lazy_static;
-use std::ops::Deref;
 use std::ops::{Add, Sub, Mul, Div, Neg, Rem};
 use std::convert::{TryFrom, From};
 use crate::{impl_binary_op_simple, impl_binary_op};
