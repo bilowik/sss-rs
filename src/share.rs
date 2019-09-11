@@ -119,26 +119,27 @@ mod tests {
     use super::*;
     use signal_hook::register;
     use backtrace::Backtrace;
+    use num_traits::Pow;
+    use rand::rngs::SmallRng;
 
 
 
 
     #[test]
     fn many_test() {
-        use num_traits::Pow;
 
         let num_iters = 50;
+        let seed = 123;
 
-        let mut rand = rand::rngs::OsRng::new().unwrap();
+        let mut rand = SmallRng::seed_from_u64(123u64);
 
         for i in 0..num_iters {
-            let secret: u8 = rand.gen_range(1, 255);
+            let secret: u8 = (rand.gen_range(1, 256) as u8);
             let shares_required = rand.gen_range(2, 10);
-            let shares_to_create = shares_required + rand.gen_range(0, 5);
-            let bit_size_co: usize = rand.gen_range(64, 128);
-            let prime_bits: usize = rand.gen_range(bit_size_co + 128, 512);
+            let shares_to_create = shares_required + rand.gen_range(0, 6);
+            let bit_size_co: usize = rand.gen_range(32, 65);
+            let prime_bits: usize = rand.gen_range(bit_size_co + 128, 257);
             let mut prime: BigUint = rand.gen_prime(prime_bits);
-            println!("Prime: {}", prime); 
             while prime < BigUint::from(secret) {
                 prime = rand.gen_prime(prime_bits);
             }
@@ -152,9 +153,11 @@ mod tests {
     fn basic_single_value(secret: u8, prime: BigUint, bit_size_co: usize, 
                           shares_to_create: usize, shares_required: usize) {
 
+        /* Was used to find an infinite loop, no longer needed
         unsafe {
             register(signal_hook::SIGQUIT, || println!("{:?}", Backtrace::new()));
         }
+        */
         
         assert!(num_bigint_dig::prime::probably_prime(&prime, 10));
         let prime: BigInt = prime.into();
@@ -175,6 +178,7 @@ mod tests {
 
 
     }
+
 
 
 }
