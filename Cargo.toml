@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["bilowik"]
 edition = "2018"
 description = "A purely functional implementation of Shamir Secret Sharing"
-
+repository = "https://github.com/bilowik/sss-rs
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -18,3 +18,4 @@ num-traits = "0.2.8"
 num-bigint-dig = {version = "0.4.0", features = ["rand", "prime"]}
 signal-hook = "0.1.10"
 console = "*"
+categories = ["cryptography"]
