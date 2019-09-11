@@ -58,15 +58,11 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt,
 pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_required: usize,
                                    shares_to_create: usize, co_max_bits: usize,
                                    _x_value_max_bits: usize) -> Result<Vec<Vec<Point>>, ()> {
-
-    
-
+    if secret.len() == 0 {
+        return Err(())
+    }
 
     let mut list_of_share_lists: Vec<Vec<Point>> = Vec::new();
-
-    for _ in 0..secret.len() {
-        list_of_share_lists.push(Vec::with_capacity(shares_to_create));
-    }
 
     for s in secret {
         match create_shares_from_secret(*s, 
@@ -236,24 +232,29 @@ mod tests {
     }
 
 
-    /*
+    
     #[test]
     fn large_data() {
-        let rand = SmallRng::seed_from_u64(123);
-        let secret = "Hello World";
-        let shares_required = 3;
-        let shares_to_create = 3;
+        let mut rand = SmallRng::seed_from_u64(123);
+        let secret = "Hello World and all who inhabit it";
+        let shares_required = 5;
+        let shares_to_create = 5;
         let co_max_bits = 64;
-        let prime = rand.gen_prime(128);
+        let prime: BigInt = rand.gen_prime(128).into();
         let _x_value_max_bits = 128;
 
-        let share_lists = create_share_lists_from_secrets(secret.as_bytes(), prime.into(), 
-                          shares_required, shares_to_create, co_max_bits, _x_value_max_bits);
-        let recon_secret = 
+        let share_lists = create_share_lists_from_secrets(secret.as_bytes(), &prime, 
+                          shares_required, shares_to_create, co_max_bits, _x_value_max_bits).unwrap();
+        let share_lists = transpose_vec_matrix(&share_lists).unwrap();
+
+        let recon_secret_vec = reconstruct_secrets_from_share_lists(
+                transpose_vec_matrix(&share_lists).unwrap(), &prime, shares_required).unwrap();
+        let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
+        assert_eq!(secret, &recon_secret[..])
 
 
     }
-    */
+    
 
 
 }
