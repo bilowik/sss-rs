@@ -21,7 +21,7 @@ impl Polynomial {
     }
 
     
-    pub fn from_points(points: Vec<Point>, degree: usize) -> Result<Self, Error> {
+    pub fn from_points(points: &Vec<Point>, degree: usize) -> Result<Self, Error> {
         let mut temp_polys: Vec<Polynomial> = Vec::with_capacity(degree + 1);
         let mut lagrange_polys: Vec<Polynomial> = Vec::with_capacity(degree + 1);
         
@@ -433,7 +433,7 @@ mod test {
         ];
 
 
-        let poly = Polynomial::from_points(points, 1).unwrap();
+        let poly = Polynomial::from_points(&points, 1).unwrap();
         let poly2 = Polynomial::builder()
             .with(1, 0)
             .with(1, 1)
@@ -450,7 +450,7 @@ mod test {
             Point::new(1, 1),
             Point::new(2, 4),
         ];
-        let poly3 = Polynomial::from_points(points2, 2).unwrap();
+        let poly3 = Polynomial::from_points(&points2, 2).unwrap();
         let poly4 = Polynomial::builder()
             .with(1, 2)
             .build();
@@ -467,7 +467,7 @@ mod test {
             Point::new(8, 14)
         ];
 
-        let poly = Polynomial::from_points(points, 3).unwrap();
+        let poly = Polynomial::from_points(&points, 3).unwrap();
         let poly2 = Polynomial::builder()
             .with(Fraction::new(263, 180), 1)
             .with(Fraction::new(1, 72), 2)
