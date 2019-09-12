@@ -195,7 +195,6 @@ mod tests {
     use rand::SeedableRng;
     use rand::Rng;
     use super::*;
-    //use signal_hook::register;
     use rand::rngs::SmallRng;
 
 
@@ -228,7 +227,7 @@ mod tests {
     fn basic_single_value(secret: u8, prime: BigUint, bit_size_co: usize, 
                           shares_to_create: usize, shares_required: usize) {
 
-        /* Was used to find an infinite loop, no longer needed
+        /* Was used to find an infinite loop, no longer needed, but keeping for future reference
         unsafe {
             register(signal_hook::SIGQUIT, || println!("{:?}", Backtrace::new()));
         }

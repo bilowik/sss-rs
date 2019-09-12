@@ -64,7 +64,6 @@ impl std::fmt::Display for Point {
 #[cfg(test)]
 mod tests {
    use super::Point;
-   use pretty_assertions::assert_eq;
 
    #[test]
     fn add() {
