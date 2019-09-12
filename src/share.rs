@@ -84,6 +84,10 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt,
 /// This is a wrapper around @create_share_from_secret that loops through the @secret slice and
 /// returns a vector of vectors, with each vector being all the shares for a single byte of the
 /// secret.
+/// The format this returns the secrets in is:
+///     share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()> 
+///     share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
+/// since that is how they would be distributed.
 /// @secret: A slice of bytes to be used to create the vector of share vectors
 /// ... For the rest of the arguments, see @create_shares_from_secret
 pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_required: usize,
@@ -112,19 +116,23 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_req
         }
     }
 
-    Ok(list_of_share_lists)
+    Ok(transpose_vec_matrix(&list_of_share_lists).unwrap())
 }
 
 
 /// This is a wrapper around @reconstruct_secret that iterates over each Vec of shares and
 /// reconstructs their respective byte of the secret.
+/// It expects the shares to be in this format:
+///     share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()> 
+///     share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
+/// since that is how they would be distributed.
 /// @share_lists: A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
 ///     of the secret.
 /// ... For the rest of the arguments, see @reconstruct_secret
 pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime: &BigInt,
                                             shares_needed: usize) -> Result<Vec<u8>, Error> {
     let mut secrets: Vec<u8> = Vec::with_capacity(share_lists.len());
-
+    let share_lists = transpose_vec_matrix(&share_lists)?;
     for point_list in share_lists {
         match reconstruct_secret(point_list, prime, shares_needed) {
             Ok(secret) => {
@@ -309,10 +317,9 @@ mod tests {
 
         let share_lists = create_share_lists_from_secrets(secret.as_bytes(), &prime, 
                           shares_required, shares_to_create, co_max_bits, _x_value_max_bits).unwrap();
-        let share_lists = transpose_vec_matrix(&share_lists).unwrap();
 
         let recon_secret_vec = reconstruct_secrets_from_share_lists(
-                transpose_vec_matrix(&share_lists).unwrap(), &prime, shares_required).unwrap();
+                share_lists, &prime, shares_required).unwrap();
         let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
         
         let time_elap = now.elapsed().as_millis();
