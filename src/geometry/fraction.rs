@@ -141,6 +141,23 @@ impl Fraction {
 
 
     }
+
+
+    /// A self consuming modulo operation which avoids cloning the rhs operand
+    /// This is in testing, may not improve performance
+    pub fn mod_bigint_ref_optimized(mut self, rhs: &BigInt) -> Self {
+        if self.numerator.sign() != Sign::Minus {
+            let mut div = &self / rhs;
+            div = div.floor();
+            (&self - &(&div * rhs)).abs()
+        }
+        else {
+            // The bigint_dig library doesn't handle modulo in the way we need it to with negative
+            // numbers, so this gives us the output that we need.
+            (-(-self % rhs) + rhs)
+        }
+
+    }
      
 
     /// Consuming floor operation that "truncates" the fraction to a whole number
