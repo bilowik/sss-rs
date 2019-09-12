@@ -1,4 +1,6 @@
-/*
+/* TODO: This cloning during operations is very inefficient, create a new macro for cheap
+ * operations
+ *
  * This macro is used to easily and quickly implement binary operations for structs for a mixture
  * of reference and non-reference values 
  *

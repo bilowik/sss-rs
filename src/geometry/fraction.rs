@@ -19,7 +19,12 @@ lazy_static! {
 }
 
 
-
+/// A signed numerical value that is used to represent a fractional value or a whole value without 
+/// having to worry about decimals and truncating.
+/// While both the @numerator and @denominator are signed values, only the numerator is allowed to
+/// be negative. The denominator is signed to make mathematical operations easier and will
+/// sometimes need to be negative during an operation but the sign will be moved to the numerator
+/// automatically
 #[derive(Debug, Clone, Ord, PartialOrd)]
 pub struct Fraction {
     numerator: BigInt, 
@@ -35,6 +40,10 @@ pub struct Fraction {
 
 impl Fraction {
 
+    /// Creates a new fraction with the given numerator and denominator, which accepts any value
+    /// that implements Into<BigInt>.
+    /// @numerator: The numerator of the fraction
+    /// @denominator: The denominator of the fraction
     pub fn new<S: Into<BigInt>, T: Into<BigInt>>(numerator: S, denominator: T) -> Self {
         let frac = Fraction {
             numerator: numerator.into(), 
@@ -42,40 +51,49 @@ impl Fraction {
         };
         frac.reduce()
     }
-    
+   
+    /// Returns a reference to the numerator of the fraction
     pub fn get_numerator<'a>(&'a self) -> &'a BigInt {
         &self.numerator
     }
+    
+    /// Returns a reference to the denominator of the fraction
     pub fn get_denominator<'a>(&'a self) -> &'a BigInt {
         &self.denominator
     }
 
+    /// Consumes the fraction and returns the negation of it
     pub fn negate(mut self) -> Self {
         self.numerator = -&self.numerator;
         self
     }
 
+    /// Consuming add operation
     pub fn add_fraction(mut self, mut other: Fraction) -> Self {
         self.match_denominator(&mut other); 
         self.numerator = &self.numerator + &other.numerator;
         self.reduce()
     }
 
+    /// Consuming sub operation
     pub fn sub_fraction(self, other: Fraction) -> Self {
         self.add_fraction(-other)
     }
 
+    /// Consuming multiplication operation
     pub fn mul_fraction(mut self, other: Fraction) -> Self {
         self.numerator = &self.numerator * &other.numerator;
         self.denominator = &self.denominator * &other.denominator;
         self.reduce()
     }
 
+    /// Consuming division operation
     pub fn div_fraction(self, other: Fraction) -> Self {
         self.mul_fraction(other.flip()) // No reduction necessary since @mul_fraction already reduces
     }
 
-    
+   
+    /// Consuming modulo operation
     pub fn mod_fraction(self, rhs: Fraction) -> Self {
         let mut div = &self / &rhs;
         div = div.floor(); // Floor to remove denominator, which brings @div to a whole number
@@ -83,23 +101,31 @@ impl Fraction {
         
     }
 
+    /// Consuming add operation with the right hand side being a BigInt
     pub fn add_bigint(mut self, rhs: BigInt) -> Self {
         self.numerator = &self.numerator + (rhs * &self.denominator);
         self
     }
+
+    /// Consuming sub operation with the right hand side being a BigInt
     pub fn sub_bigint(self, rhs: BigInt) -> Self {
         self.add_bigint(-rhs)
     }
+
+    /// Consuming multiplication operation with the right hand side being a BigInt
     pub fn mul_bigint(mut self, rhs: BigInt) -> Self {
         self.numerator = &self.numerator * rhs;
         self
     }
+
+    /// Consuming division operation with the right hand side being a BigInt
     pub fn div_bigint(mut self, rhs: BigInt) -> Self {
         self.denominator = &self.denominator * rhs;
         self
     }
 
     
+    /// Consuming modulo operation with the right hand side being a BigInt
     pub fn mod_bigint(self, rhs: BigInt) -> Self {
        
         if self.numerator.sign() != Sign::Minus {
@@ -108,7 +134,8 @@ impl Fraction {
             (&self - &(&div * &rhs)).abs()
         }
         else {
-            
+            // The bigint_dig library doesn't handle modulo in the way we need it to with negative
+            // numbers, so this gives us the output that we need.
             (-(-self % &rhs) + &rhs)
         }
 
@@ -116,12 +143,14 @@ impl Fraction {
     }
      
 
+    /// Consuming floor operation that "truncates" the fraction to a whole number
     pub fn floor(mut self) -> Self {
         self.numerator = &self.numerator / &self.denominator;
         self.denominator = BIGINT_ONE.clone();
         self
     }
 
+    /// Consuming absolute value operation, if the fraction is negative, it is made positive
     pub fn abs(self) -> Self {
         match self.numerator.sign() {
             Sign::Minus => self.negate(),
@@ -129,6 +158,8 @@ impl Fraction {
         }
     }
 
+    /// Matches the denominator of @self and another given fraction, which is used to make addtion
+    /// and subtraction operations possible.
     pub fn match_denominator(&mut self, other: &mut Fraction) {
         if self.denominator != other.denominator {
            let orig_denom = self.denominator.clone();
@@ -139,8 +170,11 @@ impl Fraction {
         }
     }
 
-    
-    pub fn reduce(mut self) -> Self {
+   
+    /// Reduces the fraction to the smallest possible numerator and denominator, which makes
+    /// comparison operations much easier since we can assume that fractions that are equal will
+    /// always have the same exact numerator and denominator
+    fn reduce(mut self) -> Self {
         if !self.numerator.is_zero() && !self.denominator.is_one() {
             let gcd = Self::gcd_bigint(&self.numerator, &self.denominator);
             self.numerator = &self.numerator / &gcd;
@@ -157,6 +191,7 @@ impl Fraction {
         self
     }
 
+    /// Consuming operation that flips the fraction
     pub fn flip(mut self) -> Self {
         if !self.numerator.is_zero() { 
             // If the numerator is 0, flipping it will make this fraction undefined. For my use
@@ -209,6 +244,7 @@ impl Fraction {
         */
     }
 
+    /// Checks if the given fraction is a whole number, returns true if it is, false otherwise
     pub fn is_whole(&self) -> bool {
         if self.denominator.is_one() {
             true
@@ -222,6 +258,7 @@ impl Fraction {
     }
 
 
+    /// Consuming exponential operation, raising the fraction to the given power.
     pub fn pow(mut self, pow: usize) -> Self {
         self.denominator = self.denominator.pow(pow);
         self.numerator = self.numerator.pow(pow);
@@ -268,7 +305,8 @@ impl Eq for Fraction {}
 
 
 // See src/geometry/utils.rs for docs
-// This implements those traits for every mixture of references and non-references
+// This implements those traits for every mixture of references and non-references to make
+// operations much easier
 impl_binary_op_simple!(Fraction, Add, add, add_fraction);
 impl_binary_op_simple!(Fraction, Sub, sub, sub_fraction);
 impl_binary_op_simple!(Fraction, Mul, mul, mul_fraction);
@@ -311,7 +349,9 @@ impl<T: Into<BigInt> + std::fmt::Debug> From<T> for Fraction {
 
 
 
-
+/// Attempts to convert a Fraction into a BigInt. Will return an error if the fraction is not a
+/// whole number. If truncation is the goal, first call floor and then either TryFrom or
+/// @get_numerator
 impl TryFrom<Fraction> for BigInt {
     type Error = String;
 

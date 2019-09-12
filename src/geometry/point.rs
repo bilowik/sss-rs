@@ -7,7 +7,8 @@ use std::ops::{Add, Sub};
 
 
 
-
+/// A point structure that uses fractional values so that it can represent whole and non-whole
+/// numbers without the need for truncating.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Point {
     x: Fraction,
@@ -17,6 +18,7 @@ pub struct Point {
 
 impl Point {
 
+    /// Creates a point from two values that impl Into<Fraction>
     pub fn new<T: Into<Fraction>, S: Into<Fraction>>(x: T, y: S) -> Self {
         Point { x: x.into(), y: y.into() }
     }

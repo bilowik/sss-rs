@@ -6,6 +6,8 @@ use super::{
 use crate::impl_binary_op;
 
 
+/// Represents a term in a polynomial function where the @co coefficient is multiplied by 
+/// 'x' ^ @degree. 
 #[derive(Default, Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Term {
     degree: usize, // The degree x is raised to
@@ -13,6 +15,8 @@ pub struct Term {
 }
 
 impl Term {
+
+    /// Creates a new Term with a given fraction and degree
     pub fn new<T: Into<Fraction>>(co: T, degree: usize) -> Self {
         Term {co: co.into(), degree}
     }
@@ -25,10 +29,14 @@ impl Term {
         self.co = co;
     }
 
+    /// Return a reference to the coefficient of the term
     pub fn get_co<'a>(&'a self) -> &'a Fraction {
         &self.co
     }
 
+    /// This is a consuming operation that attempts to add two terms that have the same degree.
+    /// NOTE: If the two terms do not have the same degree, only an error will be returned and the
+    /// values dropped.
     pub fn term_add_same_degree(mut self, rhs: Term) -> Result<Term, ()> {
         if self.get_degree() == rhs.get_degree() { 
             self.co = self.co + rhs.co;
@@ -39,6 +47,8 @@ impl Term {
         }
     }
 
+    /// Consuming add operation that adds two Terms together and returns a polynomial. Since the
+    /// two terms may not have the same degree, they would have to become a polynomial.
     pub fn term_add(mut self, rhs: Term) -> Polynomial {
         if self.degree == rhs.degree {
             self.co = self.co + rhs.co;
@@ -52,6 +62,8 @@ impl Term {
         }
     }
 
+    /// Consuming sub operation that adds two Terms together and returns a polynomial. Since the
+    /// two terms may not have the same degree, they would have to become a polynomial.
     pub fn term_sub(mut self, rhs: Term) -> Polynomial {
         if self.degree == rhs.degree {
             self.co = self.co - rhs.co;
@@ -65,6 +77,8 @@ impl Term {
         }
     }
 
+    /// Consuming multiplication operation, returns a Term since the multiplication of two single
+    /// terms will always return a single term thus not needing to be a polynomial
     pub fn term_mul(mut self, rhs: Term) -> Term {
         self.co = self.co * rhs.co;
         self.degree = self.degree + rhs.degree;
@@ -72,21 +86,31 @@ impl Term {
     }
 
 
+    /// Consuming multiplication operation which scales the term by a given fraction.
+    /// This is equivalent to @term_mul with the second term having a @degree of 0
     pub fn term_mul_fraction<T: Into<Fraction>>(mut self, rhs: T) -> Self {
         self.co = self.co * rhs.into();
         self
     }
 
+    /// Consuming add operation that adds a polynomial to a given term. 
+    /// These are conveience operations that allow for:
+    /// Polynomai + Term
+    /// and
+    /// Term + Polynomial
+    /// to give a communitive poperty.
     pub fn term_add_poly(self, mut rhs: Polynomial) -> Polynomial {
         rhs.add_to_term(self);
         rhs
     }
 
+    /// See @term_add_poly
     pub fn term_sub_poly(self, mut rhs: Polynomial) -> Polynomial {
         rhs.sub_to_term(self);
         rhs
     }
 
+    /// See @term_add_poly
     pub fn term_mul_poly(self, rhs: Polynomial) -> Polynomial {
         rhs.mul_polynomial(self.into())
     }

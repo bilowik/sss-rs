@@ -4,7 +4,8 @@ use super::term::Term;
 use std::ops::{Deref, Add, Sub, Mul, Neg};
 use crate::{impl_binary_op_simple, impl_binary_op};
 
-
+/// A polynomial function that is made up of a Vec of @Term. It supports common operations done on
+/// polynomials including finding the 'y' value with a given 'x' value. 
 #[derive(Debug, Clone)]
 pub struct Polynomial {
     terms: Vec<Term>,
@@ -14,13 +15,18 @@ pub struct Polynomial {
 
 impl Polynomial {
 
+    /// Creates an empty polynomial with no terms
     pub fn new() -> Self {
         Self { 
             terms: vec![],
         }
     }
 
-    
+   
+    /// From a given list of points, attempts to use Lagrange interpolation to generate the
+    /// polynomial that runs through those points. Will return an error if there's not enough
+    /// pointes to satisfy the @degree requested. If the degree is not to be known, it can be set
+    /// to @points.len() - 1
     pub fn from_points(points: &Vec<Point>, degree: usize) -> Result<Self, Error> {
         let mut temp_polys: Vec<Polynomial> = Vec::with_capacity(degree + 1);
         let mut lagrange_polys: Vec<Polynomial> = Vec::with_capacity(degree + 1);
@@ -57,10 +63,12 @@ impl Polynomial {
     }
 
 
+    /// Returns a PolynomialBuilder struct that provides a builder design pattern.
     pub fn builder() -> PolynomialBuilder {
         PolynomialBuilder::new()
     }
 
+    /// Gets the degree of the polynomial
     pub fn get_degree(&self) -> usize {
         dbg!(&self);
         match self.terms.last() {
@@ -80,18 +88,22 @@ impl Polynomial {
         self.terms.as_slice().binary_search_by(|val: &Term| val.get_degree().cmp(&degree))
     }
 
-    // TODO: Terms aren't adding correctly at  the 0th power, check term_add_same_degree and this
-    // function
-    // It's bugging out when the denominator is also zero which it never should be.
+    // TODO: Refactor the names of these functions, remove the 'to' since it seems unusual and
+    // unhelpful
+    // TODO: Make this match its sister subtraction fucntion, the discrepency doesn't make any
+    // sense
+    /// Adds a term to the polynomial
     pub fn add_to_term(&mut self, term: Term) {
         self.set_term(self.get_term(term.get_degree()).term_add_same_degree(term).unwrap());
     }
 
+    /// Subs aterm from the polynomial
     pub fn sub_to_term(&mut self, term: Term) {
         self.set_terms(&term - self.get_term(term.get_degree()));
     }
 
 
+    /// Sets the term with degree @term.get_degree() to @term
     pub fn set_term(&mut self, term: Term) {
         match self.bin_search_terms(term.get_degree()) {
             Ok(index) => {
@@ -104,7 +116,8 @@ impl Polynomial {
         }
                  
     }
-    
+   
+    /// Iterates through @poly's terms and sets each of @self's terms to those from @poly
     pub fn set_terms(&mut self, poly: Polynomial) {
         for term in poly {
             self.set_term(term);
@@ -113,7 +126,9 @@ impl Polynomial {
 
 
 
-    
+   
+    /// Returns a copy of the term with the given degree, or creates a new zero coefficient term
+    /// and returns it. This term is not added into the polynomial
     pub fn get_term(&self, degree: usize) -> Term {
         match self.bin_search_terms(degree) {
             Ok(index) => {
@@ -131,7 +146,7 @@ impl Polynomial {
 
 
    
-    /// Adds together two polynomials, consuming both and returning the sum.
+    /// Adds together two polynomials, consuming both and returning the sum
     pub fn add_polynomial(mut self, rhs: Self) -> Self {
         for term in rhs {
             self.add_to_term(term);
@@ -140,7 +155,7 @@ impl Polynomial {
     }
 
     
-    /// Subtracts one polynomial from the other, consuming both and returning the difference.
+    /// Subtracts one polynomial from the other, consuming both and returning the difference
     pub fn sub_polynomial(mut self, rhs: Self) -> Self {
         for term in rhs {
             self.sub_to_term(term);
@@ -148,7 +163,7 @@ impl Polynomial {
         self
     }
 
-    /// Multiplies together two polynomials, consuming both and returning the product.
+    /// Multiplies together two polynomials, consuming both and returning the product
     pub fn mul_polynomial(self, rhs: Self) -> Self {
         let mut prod = Self::default();
 
@@ -161,6 +176,8 @@ impl Polynomial {
 
     }
 
+    /// Scales the polynomial with the given @scalar. Each term gets multiplied by @scalar with no
+    /// impact on the terms' degree
     pub fn scale<T: Into<Fraction>>(mut self, scalar: T) -> Self {
         let scalar = scalar.into();
         for index in 0..self.terms.len() {
@@ -169,11 +186,13 @@ impl Polynomial {
         self
     }
 
+    /// Negates the entire polynomial, meaning each term has its sign flipped
     pub fn negate(self) -> Self {
         self.scale(-1)
     }
 
 
+    /// Get the corresponding 'y' value to the given 'x' value
     pub fn get_y_value(&self, x_val: &Fraction) -> Fraction {
         let mut frac = Fraction::new(0, 1);
 
@@ -208,6 +227,7 @@ impl_binary_op_simple!(Polynomial, Add, add, add_polynomial);
 impl_binary_op_simple!(Polynomial, Sub, sub, sub_polynomial);
 impl_binary_op_simple!(Polynomial, Mul, mul, mul_polynomial);
 
+/// Creates an iterator that iterates through the terms of the polynomial
 impl IntoIterator for Polynomial {
     type Item = Term;
     type IntoIter = std::vec::IntoIter<Self::Item>;
