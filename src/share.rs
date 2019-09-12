@@ -6,7 +6,21 @@ use std::ops::Rem;
 
 
 
-
+/// Creates a vector of points that serve as the list of shares for a given byte of data. 
+/// @secret: The secret value that is to be split into shares
+/// @prime: The prime number that is used to generate a finite field to increase security. This is
+///     not checked to be prime, so no errors will be reported if this value isn't prime, which
+///     must be done outside this function for efficiency. 
+/// @shares_required: The number of shares required to recreate the secret
+/// @shares_to_create: The number of shares to create, so any number 'x' shares from the total 'y'
+///     shares are enough to recreate the secret. If < shares_required, it's automatically bumped
+///     up.
+/// @co_max_bits: The maximum number of bits for the randomly generated coefficients of the polynomial
+///     hide the secret. If @co_max_bits == 0, this function will panic.
+/// @_x_value_max_bits: This value is currently unused but will likely be implemented in the
+///     future. It is safe for this value to be any number.
+///
+/// Return: This function will return Ok<Vec<Point>> upon success. 
 pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: usize, 
                         shares_to_create: usize, co_max_bits: usize, 
                         _x_value_max_bits: usize) -> Result<Vec<Point>, Error> {
@@ -40,6 +54,18 @@ pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: us
     Ok(shares)
 }
 
+
+/// Reconstructs a secret from a given Vector of shares (points) and returns that secret. No
+/// guarantees are made that the shares are valid together and that the secret is valid. If there
+/// are enough shares, a secret will be generated.
+/// @shares: The vector of shares that are used to regenerate the polynomial and finding the
+///     secret. @shares.len() must be >= @shares_needed, else this will return an error.
+/// @prime: The original prime used to generate the shares. No guarantees are made that this prime
+///     is indeed the original prime, this must be kept from when the shares were generated. This
+///     value is also not checked to be prime, which must be done outside this function for
+///     efficieny.
+///
+/// This will return an error if @shares.len() < shares_needed.
 pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt, 
                           shares_needed: usize) -> Result<u8, Error> {
     match Polynomial::from_points(&shares, shares_needed - 1) {
@@ -55,6 +81,11 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt,
 }
 
 
+/// This is a wrapper around @create_share_from_secret that loops through the @secret slice and
+/// returns a vector of vectors, with each vector being all the shares for a single byte of the
+/// secret.
+/// @secret: A slice of bytes to be used to create the vector of share vectors
+/// ... For the rest of the arguments, see @create_shares_from_secret
 pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_required: usize,
                                    shares_to_create: usize, co_max_bits: usize,
                                    _x_value_max_bits: usize) -> Result<Vec<Vec<Point>>, Error> {
@@ -85,12 +116,11 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_req
 }
 
 
-
-/// The share lists should be in this format since this is how they would be distributed:
-/// Each Vec in Vec<Vec<Point>> should be: share1byte1, share1byte2, share1byte3 and so on.
-/// The first index is the share, the second being the byte of the share.
-/// This is also how they are outputted so it can easily be sent back through and decrypted without
-/// modification.
+/// This is a wrapper around @reconstruct_secret that iterates over each Vec of shares and
+/// reconstructs their respective byte of the secret.
+/// @share_lists: A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
+///     of the secret.
+/// ... For the rest of the arguments, see @reconstruct_secret
 pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime: &BigInt,
                                             shares_needed: usize) -> Result<Vec<u8>, Error> {
     let mut secrets: Vec<u8> = Vec::with_capacity(share_lists.len());
@@ -110,7 +140,8 @@ pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime:
 
 
 
-/// Returns the "matrix" as is if the rows don't have an equal number of columns
+/// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
+/// @matrix: The matrix to be transposed, must be a valid matrix else an error is returned.
 pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
 
     for i in 1..matrix.len() {
@@ -134,7 +165,7 @@ pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>
 }
 
 
-// Local error enum
+/// Local Error enum, used to report errors that would only occur within this file.
 #[derive(Debug)]
 pub enum Error {
     NotEnoughShares { given: usize, required: usize },
