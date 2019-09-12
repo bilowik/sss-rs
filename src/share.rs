@@ -9,7 +9,7 @@ use std::ops::Rem;
 
 pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: usize, 
                         shares_to_create: usize, co_max_bits: usize, 
-                        _x_value_max_bits: usize) -> Result<Vec<Point>, ()> {
+                        _x_value_max_bits: usize) -> Result<Vec<Point>, Error> {
 
 
     let mut shares: Vec<Point> = Vec::new();
@@ -41,8 +41,8 @@ pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: us
 }
 
 pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt, 
-                          shares_needed: usize) -> Result<u8, ()> {
-    match Polynomial::from_points(shares, shares_needed - 1) {
+                          shares_needed: usize) -> Result<u8, Error> {
+    match Polynomial::from_points(&shares, shares_needed - 1) {
         Ok(poly) => {
             Ok(poly.get_term(0)
                         .get_co()
@@ -50,16 +50,16 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt,
                         .get_numerator()
                         .to_bytes_le().1[0])
         }
-        Err(_) => Err(()),
+        Err(_) => Err(Error::NotEnoughShares { given: shares.len(), required: shares_needed }),
     }
 }
 
 
 pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_required: usize,
                                    shares_to_create: usize, co_max_bits: usize,
-                                   _x_value_max_bits: usize) -> Result<Vec<Vec<Point>>, ()> {
+                                   _x_value_max_bits: usize) -> Result<Vec<Vec<Point>>, Error> {
     if secret.len() == 0 {
-        return Err(())
+        return Err(Error::EmptySecretArray)
     }
 
     let mut list_of_share_lists: Vec<Vec<Point>> = Vec::new();
@@ -75,8 +75,8 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_req
                 // Now this list needs to be transposed:
                 list_of_share_lists.push(shares);
             },
-            Err(_) => {
-                return Err(());
+            Err(e) => {
+                return Err(e);
             }
         }
     }
@@ -92,7 +92,7 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_req
 /// This is also how they are outputted so it can easily be sent back through and decrypted without
 /// modification.
 pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime: &BigInt,
-                                            shares_needed: usize) -> Result<Vec<u8>, ()> {
+                                            shares_needed: usize) -> Result<Vec<u8>, Error> {
     let mut secrets: Vec<u8> = Vec::with_capacity(share_lists.len());
 
     for point_list in share_lists {
@@ -100,8 +100,8 @@ pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime:
             Ok(secret) => {
                 secrets.push(secret);
             },
-            Err(_) => {
-                return Err(());
+            Err(e) => {
+                return Err(e);
             }
         }
     }
@@ -111,11 +111,11 @@ pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime:
 
 
 /// Returns the "matrix" as is if the rows don't have an equal number of columns
-pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>>, ()> {
+pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
 
     for i in 1..matrix.len() {
         if matrix[i - 1].len() != matrix[i].len() {
-            return Err(());
+            return Err(Error::InvalidMatrix { index_of_invalid_length_row: i } );
         }
     }
 
@@ -134,6 +134,28 @@ pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>
 }
 
 
+// Local error enum
+#[derive(Debug)]
+pub enum Error {
+    NotEnoughShares { given: usize, required: usize },
+    InvalidMatrix { index_of_invalid_length_row: usize },
+    EmptySecretArray,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::NotEnoughShares { given, required } => 
+                write!(f, "Not enough shares to recreate secret: Given: {}; Required: {}", 
+                       given, required),
+            Self::InvalidMatrix { index_of_invalid_length_row } => 
+                write!(f, "Row {} is not the same length as previous rows", index_of_invalid_length_row),
+            Self::EmptySecretArray => write!(f, "Secret array should not be empty"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 
 #[cfg(test)]
@@ -254,10 +276,12 @@ mod tests {
 
 
     }
+
     
 
 
 }
+
 
 
 
