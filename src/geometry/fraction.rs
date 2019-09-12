@@ -143,6 +143,8 @@ impl Fraction {
     }
 
 
+    /* The performance boost is very negligible due to the need for cloning the lhs in this
+     * scenario, since get_co() returns a reference which cannot be consumed by this function.
     /// A self consuming modulo operation which avoids cloning the rhs operand
     /// This is in testing, may not improve performance
     pub fn mod_bigint_ref_optimized(self, rhs: &BigInt) -> Self {
@@ -158,6 +160,7 @@ impl Fraction {
         }
 
     }
+    */
      
 
     /// Consuming floor operation that "truncates" the fraction to a whole number
