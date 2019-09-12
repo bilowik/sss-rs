@@ -145,7 +145,7 @@ impl Fraction {
 
     /// A self consuming modulo operation which avoids cloning the rhs operand
     /// This is in testing, may not improve performance
-    pub fn mod_bigint_ref_optimized(mut self, rhs: &BigInt) -> Self {
+    pub fn mod_bigint_ref_optimized(self, rhs: &BigInt) -> Self {
         if self.numerator.sign() != Sign::Minus {
             let mut div = &self / rhs;
             div = div.floor();
