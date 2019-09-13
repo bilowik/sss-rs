@@ -1,10 +1,11 @@
 use crate::geometry::*;
 use num_bigint_dig::{BigInt, BigUint, RandBigInt};
-use rand::rngs::{OsRng, StdRng};
-use rand::SeedableRng;
+use rand::rngs::{OsRng, StdRng, SmallRng};
+use rand::{SeedableRng, Rng, RngCore};
 use std::ops::Rem;
-
-
+use crypto::sha3::Sha3;
+use crypto::digest::Digest;
+use rand::seq::SliceRandom;
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data. 
 /// @secret: The secret value that is to be split into shares
@@ -148,6 +149,84 @@ pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime:
 
 
 
+/// Used to specify the shuffle operation to be used, ReverseShuffle undoes Shuffle and vice-versa
+/// when given the same hash.
+#[derive(Debug, Copy, Clone)]
+pub enum ShuffleOp {
+    Shuffle,
+    ReverseShuffle,
+}
+
+/// Shuffles the given shares with a rng seeded with the hash of a password. This would mean that
+/// the shares would need to be unshuffled using the same password in order to restore the data
+/// properly.
+// The reason for the unsafe run-around with the vector is to save a bunch of extra copying of
+// blank data into the vector to give it enough room to be indexed at random up to length
+// @num_shares
+fn shuffle_shares(shares: Vec<Point>, hashed_pass: &[u8; 32], shuffle: ShuffleOp) -> Vec<Point> {
+    let num_shares = shares.len();
+    let mut shuffled = Vec::with_capacity(num_shares);
+    let cap = shuffled.capacity();
+
+    //let mut rand = ChaCha8Rng::from_seed(*hashed_pass);
+    let mut rand = StdRng::from_seed(*hashed_pass);
+
+    let raw_vec_ptr: *mut Point = shuffled.as_mut_ptr();
+    std::mem::forget(shuffled);
+
+    let mut indices: Vec<usize> = (0..num_shares).collect();
+    indices.shuffle(&mut rand);
+
+    match shuffle {
+        ShuffleOp::Shuffle => {
+            for it in (0..num_shares).zip(indices.iter()) {
+                let (index, new_index) = it;
+                unsafe {
+                    std::ptr::write(raw_vec_ptr.offset(*new_index as isize), shares[index].clone());
+                }
+            }
+        },
+        ShuffleOp::ReverseShuffle => {
+            for it in (0..num_shares).zip(indices.iter()) {
+                let (index, new_index) = it;
+                unsafe {
+                    std::ptr::write(raw_vec_ptr.offset(index as isize), shares[*new_index].clone());
+                }
+            }
+        }
+    }
+
+    unsafe {
+        Vec::from_raw_parts(raw_vec_ptr, num_shares, cap)
+    }
+}
+
+
+/// A wrapper around shuffle_shares which iterates through a list of share lists and shuffles each
+/// one in the same way The share lists must be shuffled and unshuffled with the same password, 
+/// no checking is done to ensure the password is correct.
+/// PRECAUTION: Do not attempt to unshuffle without a copy of the original shuffled share lists so
+/// if an incorrect password is accidentally entered and that copy is permamently corrupted, the
+/// backup can be used to attempt it again.
+pub fn shuffle_share_lists(share_lists: Vec<Vec<Point>>, pass: &mut str, 
+                           shuffle: ShuffleOp) -> Vec<Vec<Point>> {
+    let mut shuffled_share_lists: Vec<Vec<Point>> = Vec::with_capacity(share_lists.len());
+    let mut hasher = Sha3::sha3_256();
+    let mut hashed_pass = [0u8; 32];
+    hasher.input(pass.as_bytes());
+    hasher.result(&mut hashed_pass);
+
+    for shares in share_lists {
+        let shuffled_shares = shuffle_shares(shares, &hashed_pass, shuffle);
+        shuffled_share_lists.push(shuffled_shares);
+    }
+
+    shuffled_share_lists
+
+}
+
+
+
 /// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
 /// @matrix: The matrix to be transposed, must be a valid matrix else an error is returned.
 pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
@@ -171,6 +250,10 @@ pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>
     }
     Ok(transpose)
 }
+
+
+
+
 
 
 /// Local Error enum, used to report errors that would only occur within this file.
@@ -329,5 +412,29 @@ mod tests {
         assert_eq!(secret, &recon_secret[..])
 
 
+    
     }
+
+    #[test]
+    fn shuffle() {
+        let secret = "Hello World";
+        let pass = String::from("password");
+        let mut rand = StdRng::seed_from_u64(123);
+        let prime: BigInt = rand.gen_prime(64).into();
+        let share_lists = create_share_lists_from_secrets(secret.as_bytes(), &prime,
+                        3, 3, 64, 64).unwrap();
+        let share_lists = shuffle_share_lists(share_lists, pass.clone().as_mut_str(),
+                                                ShuffleOp::Shuffle);
+        let share_lists = shuffle_share_lists(share_lists, pass.clone().as_mut_str(), 
+                                                ShuffleOp::ReverseShuffle);
+        let recon_secret_vec = reconstruct_secrets_from_share_lists(share_lists, &prime, 3).unwrap();
+        let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
+
+        assert_eq!(secret, recon_secret);
+
+
+    }
+
+
+
 }
