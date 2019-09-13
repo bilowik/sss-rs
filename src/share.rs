@@ -1,7 +1,7 @@
 use crate::geometry::*;
 use num_bigint_dig::{BigInt, BigUint, RandBigInt};
-use rand::rngs::{OsRng, StdRng, SmallRng};
-use rand::{SeedableRng, Rng, RngCore};
+use rand::rngs::{OsRng, StdRng};
+use rand::SeedableRng;
 use std::ops::Rem;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
@@ -18,13 +18,10 @@ use rand::seq::SliceRandom;
 ///     up.
 /// @co_max_bits: The maximum number of bits for the randomly generated coefficients of the polynomial
 ///     hide the secret. If @co_max_bits == 0, this function will panic.
-/// @_x_value_max_bits: This value is currently unused but will likely be implemented in the
-///     future. It is safe for this value to be any number.
 ///
 /// Return: This function will return Ok<Vec<Point>> upon success. 
 pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: usize, 
-                        shares_to_create: usize, co_max_bits: usize, 
-                        _x_value_max_bits: usize) -> Result<Vec<Point>, Error> {
+                        shares_to_create: usize, co_max_bits: usize) -> Result<Vec<Point>, Error> {
 
 
     let mut shares: Vec<Point> = Vec::new();
@@ -93,7 +90,7 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt,
 /// ... For the rest of the arguments, see @create_shares_from_secret
 pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_required: usize,
                                    shares_to_create: usize, co_max_bits: usize,
-                                   _x_value_max_bits: usize) -> Result<Vec<Vec<Point>>, Error> {
+                                   ) -> Result<Vec<Vec<Point>>, Error> {
     if secret.len() == 0 {
         return Err(Error::EmptySecretArray)
     }
@@ -105,8 +102,7 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_req
                                            prime, 
                                            shares_required,
                                            shares_to_create,
-                                           co_max_bits,
-                                           _x_value_max_bits) {
+                                           co_max_bits) {
             Ok(shares) => {
                 // Now this list needs to be transposed:
                 list_of_share_lists.push(shares);
@@ -334,7 +330,6 @@ mod tests {
                 &prime.clone().into(), 
                 shares_required, 
                 shares_to_create, 
-                bit_size_co, 
                 bit_size_co)
             .unwrap();
 
@@ -391,7 +386,6 @@ mod tests {
         let shares_to_create = 5;
         let co_max_bits = 64;
         let prime: BigInt = rand.gen_prime(128).into();
-        let _x_value_max_bits = 128;
         
         println!("Prime: {}", prime);
 
@@ -399,7 +393,7 @@ mod tests {
         let now = Instant::now();
 
         let share_lists = create_share_lists_from_secrets(secret.as_bytes(), &prime, 
-                          shares_required, shares_to_create, co_max_bits, _x_value_max_bits).unwrap();
+                          shares_required, shares_to_create, co_max_bits).unwrap();
 
         let recon_secret_vec = reconstruct_secrets_from_share_lists(
                 share_lists, &prime, shares_required).unwrap();
@@ -422,7 +416,7 @@ mod tests {
         let mut rand = StdRng::seed_from_u64(123);
         let prime: BigInt = rand.gen_prime(64).into();
         let share_lists = create_share_lists_from_secrets(secret.as_bytes(), &prime,
-                        3, 3, 64, 64).unwrap();
+                        3, 3, 64).unwrap();
         let share_lists = shuffle_share_lists(share_lists, pass.clone().as_mut_str(),
                                                 ShuffleOp::Shuffle);
         let share_lists = shuffle_share_lists(share_lists, pass.clone().as_mut_str(), 
