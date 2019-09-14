@@ -159,7 +159,7 @@ pub enum ShuffleOp {
 // The reason for the unsafe run-around with the vector is to save a bunch of extra copying of
 // blank data into the vector to give it enough room to be indexed at random up to length
 // @num_shares
-fn shuffle_shares(shares: Vec<Point>, hashed_pass: &[u8; 32], shuffle: ShuffleOp) -> Vec<Point> {
+fn shuffle_shares<T: Clone>(shares: Vec<T>, hashed_pass: &[u8; 32], shuffle: ShuffleOp) -> Vec<T> {
     let num_shares = shares.len();
     let mut shuffled = Vec::with_capacity(num_shares);
     let cap = shuffled.capacity();
@@ -167,7 +167,7 @@ fn shuffle_shares(shares: Vec<Point>, hashed_pass: &[u8; 32], shuffle: ShuffleOp
     //let mut rand = ChaCha8Rng::from_seed(*hashed_pass);
     let mut rand = StdRng::from_seed(*hashed_pass);
 
-    let raw_vec_ptr: *mut Point = shuffled.as_mut_ptr();
+    let raw_vec_ptr: *mut T = shuffled.as_mut_ptr();
     std::mem::forget(shuffled);
 
     let mut indices: Vec<usize> = (0..num_shares).collect();
@@ -204,9 +204,9 @@ fn shuffle_shares(shares: Vec<Point>, hashed_pass: &[u8; 32], shuffle: ShuffleOp
 /// PRECAUTION: Do not attempt to unshuffle without a copy of the original shuffled share lists so
 /// if an incorrect password is accidentally entered and that copy is permamently corrupted, the
 /// backup can be used to attempt it again.
-pub fn shuffle_share_lists(share_lists: Vec<Vec<Point>>, pass: &mut str, 
-                           shuffle: ShuffleOp) -> Vec<Vec<Point>> {
-    let mut shuffled_share_lists: Vec<Vec<Point>> = Vec::with_capacity(share_lists.len());
+pub fn shuffle_share_lists<T: Clone>(share_lists: Vec<Vec<T>>, pass: &mut str, 
+                           shuffle: ShuffleOp) -> Vec<Vec<T>> {
+    let mut shuffled_share_lists: Vec<Vec<T>> = Vec::with_capacity(share_lists.len());
     let mut hasher = Sha3::sha3_256();
     let mut hashed_pass = [0u8; 32];
     hasher.input(pass.as_bytes());
