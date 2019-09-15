@@ -204,7 +204,7 @@ fn shuffle_shares<T: Clone>(shares: Vec<T>, hashed_pass: &[u8; 32], shuffle: Shu
 /// PRECAUTION: Do not attempt to unshuffle without a copy of the original shuffled share lists so
 /// if an incorrect password is accidentally entered and that copy is permamently corrupted, the
 /// backup can be used to attempt it again.
-pub fn shuffle_share_lists<T: Clone>(share_lists: Vec<Vec<T>>, pass: &mut str, 
+pub fn shuffle_share_lists<T: Clone>(share_lists: Vec<Vec<T>>, pass: &str, 
                            shuffle: ShuffleOp) -> Vec<Vec<T>> {
     let mut shuffled_share_lists: Vec<Vec<T>> = Vec::with_capacity(share_lists.len());
     let mut hasher = Sha3::sha3_256();
