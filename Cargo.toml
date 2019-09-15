@@ -1,12 +1,13 @@
 [package]
 name = "sss-rs"
 version = "0.1.0"
-authors = ["bilowik"]
+authors = ["Aaron Flores <aaronjflores962@gmail.com"]
 edition = "2018"
-description = "A purely functional implementation of Shamir Secret Sharing"
+description = "A purely functional (as in working) implementation of Shamir Secret Sharing"
 repository = "https://github.com/bilowik/sss-rs"
 categories = ["cryptography"]
 license-file = "LICENSE"
+readme = "README.md"
 
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
