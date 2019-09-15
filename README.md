@@ -19,10 +19,10 @@ while prime < BigUint::from(secret) {
 }
 
 let shares: Vec<Point> = create_shares_from_secret(	secret,
-													&prime
-													shares_required,
-													shares_to_create,
-													bit_size_co).unwrap();
+							&prime
+							shares_required,
+							shares_to_create,
+							bit_size_co).unwrap();
 let secret_recon = reconstruct_secret(shares, &prime, shares_required).unwrap();
 
 assert_eq!(secret, secret_recon);
