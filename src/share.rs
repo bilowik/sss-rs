@@ -263,12 +263,12 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::NotEnoughShares { given, required } => 
+            Error::NotEnoughShares { given, required } => 
                 write!(f, "Not enough shares to recreate secret: Given: {}; Required: {}", 
                        given, required),
-            Self::InvalidMatrix { index_of_invalid_length_row } => 
+            Error::InvalidMatrix { index_of_invalid_length_row } => 
                 write!(f, "Row {} is not the same length as previous rows", index_of_invalid_length_row),
-            Self::EmptySecretArray => write!(f, "Secret array should not be empty"),
+            Error::EmptySecretArray => write!(f, "Secret array should not be empty"),
         }
     }
 }
