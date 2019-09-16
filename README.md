@@ -1,4 +1,5 @@
 # sss-rs
+[![Build Status](https://travis-ci.com/bilowik/sss-rs.svg?branch=master)](https://travis-ci.com/bilowik/sss-rs)
 A purely functional (as in, working) and likely inefficient implementation of Shamir Secret Sharing in Rust
 
 Not intended to be used in production code.
