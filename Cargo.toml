@@ -9,6 +9,8 @@ categories = ["cryptography"]
 license-file = "LICENSE"
 readme = "README.md"
 
+[badges]
+travis-ci = { repository = "https://travis-ci.com/bilowik/sss-rs", branch = "master" }
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
