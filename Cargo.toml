@@ -1,6 +1,6 @@
 [package]
 name = "sss-rs"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Aaron Flores <aaronjflores962@gmail.com"]
 edition = "2018"
 description = "A purely functional (as in working) implementation of Shamir Secret Sharing"
