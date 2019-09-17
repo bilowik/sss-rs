@@ -1,3 +1,10 @@
+## sss-rs 0.2.0 09/17/2019
+ - The main shuffle function now takes an arbitrary number of bytes instead of a password. Forcing a 
+ specific hashing algorithm to be used was restrictive and inflexible, and using a trait object, while 
+ better, would still restrict hashing algorithms to ones ported to Rust or wrapped in Rust code. 
+ 	- However since the seed must be 32 bytes, the hash will be sent through SHA256 to produce a 
+	32-byte hash. This has little impact on the security of the initial hashing algorithm.
+
 ## sss-rs 0.1.1 09/16/2019
  - Fixed Rust stable compilation error regarding enum variants on type aliases
  	- In the Display impl for the Error enum, its variants were referenced as Self:: instead of Error::
