@@ -203,14 +203,29 @@ fn shuffle_shares<T: Clone>(shares: Vec<T>, hashed_pass: &[u8; 32], shuffle: Shu
 /// no checking is done to ensure the password is correct.
 /// PRECAUTION: Do not attempt to unshuffle without a copy of the original shuffled share lists so
 /// if an incorrect password is accidentally entered and that copy is permamently corrupted, the
-/// backup can be used to attempt it again.
-pub fn shuffle_share_lists<T: Clone>(share_lists: Vec<Vec<T>>, pass: &str, 
+/// backup can be used to attempt it again. Some measures could also be taken for verification of
+/// the unshuffled reconstructed share but that is left up to library users.
+pub fn shuffle_share_lists<T: Clone>(share_lists: Vec<Vec<T>>, hashed_pass: &[u8], 
                            shuffle: ShuffleOp) -> Vec<Vec<T>> {
     let mut shuffled_share_lists: Vec<Vec<T>> = Vec::with_capacity(share_lists.len());
-    let mut hasher = Sha3::sha3_256();
-    let mut hashed_pass = [0u8; 32];
-    hasher.input(pass.as_bytes());
-    hasher.result(&mut hashed_pass);
+
+    let hashed_pass: [u8; 32] = if hashed_pass.len() == 256 {
+        // The hashed pass is the proper length for seeding the RNG
+        let mut s = [0u8; 32];
+        s.copy_from_slice(hashed_pass);
+        s
+    }
+    else {
+        // Since the RNG accepts 256-bit input, expand (or retract) the given input by putting it
+        // through SHA256 to get a 256-bit hash
+        let mut hashed_output = [0; 32];
+        let mut hasher = Sha3::sha3_256();
+        hasher.input(hashed_pass);
+        hasher.result(&mut hashed_output);
+        hashed_output
+    };
+
+
 
     for shares in share_lists {
         let shuffled_shares = shuffle_shares(shares, &hashed_pass, shuffle);
@@ -284,13 +299,10 @@ mod tests {
     use super::*;
     use rand::rngs::SmallRng;
 
-
-
-
     #[test]
     fn many_test() {
 
-        let num_iters = 50;
+        let num_iters = 10;
 
         let mut rand = SmallRng::seed_from_u64(123u64);
 
@@ -413,14 +425,17 @@ mod tests {
     fn shuffle() {
         let secret = "Hello World";
         let pass = String::from("password");
+        let mut hashed_pass = [0; 32];
+        let mut hasher = Sha3::sha3_256();
+        hasher.input(pass.as_bytes());
+        hasher.result(&mut hashed_pass);
+
         let mut rand = StdRng::seed_from_u64(123);
         let prime: BigInt = rand.gen_prime(64).into();
         let share_lists = create_share_lists_from_secrets(secret.as_bytes(), &prime,
                         3, 3, 64).unwrap();
-        let share_lists = shuffle_share_lists(share_lists, pass.clone().as_mut_str(),
-                                                ShuffleOp::Shuffle);
-        let share_lists = shuffle_share_lists(share_lists, pass.clone().as_mut_str(), 
-                                                ShuffleOp::ReverseShuffle);
+        let share_lists = shuffle_share_lists(share_lists, &hashed_pass, ShuffleOp::Shuffle);
+        let share_lists = shuffle_share_lists(share_lists, &hashed_pass, ShuffleOp::ReverseShuffle);
         let recon_secret_vec = reconstruct_secrets_from_share_lists(share_lists, &prime, 3).unwrap();
         let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
 
