@@ -29,3 +29,7 @@ let secret_recon = reconstruct_secret(shares, &prime, shares_required).unwrap();
 assert_eq!(secret, secret_recon);
 ```
 
+# Future plans:
+ - Refactor the code to use objects instead of just functions for a cleaner API. 
+
+
