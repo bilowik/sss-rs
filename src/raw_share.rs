@@ -1,7 +1,7 @@
 use crate::geometry::*;
 use num_bigint_dig::{BigInt, BigUint, RandBigInt};
-use rand::rngs::{OsRng, StdRng};
-use rand::{SeedableRng, Rng, RngCore, FromEntropy};
+use rand::rngs::StdRng;
+use rand::{SeedableRng, FromEntropy};
 use std::ops::Rem;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
