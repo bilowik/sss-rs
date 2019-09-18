@@ -29,7 +29,9 @@ let secret_recon = reconstruct_secret(shares, &prime, shares_required).unwrap();
 assert_eq!(secret, secret_recon);
 ```
 
-# Future plans:
- - Refactor the code to use objects instead of just functions for a cleaner API. 
-
+# TODO:
+	- Add a wrapper object around the original functions to make a cleaner API
+	- Add an alternative implementation that uses u128 vs Fraction and compare performance
+	- Check to see whether Fraction is even necessary vs just using BigInt/BigUint
+		- If it is not, refactor the code to use BigInt/BigUint, then compare performance
 
