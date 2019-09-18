@@ -31,7 +31,7 @@ assert_eq!(secret, secret_recon);
 
 # TODO:
 	- Add a wrapper object around the original functions to make a cleaner API
-	- Add an alternative implementation that uses u128 vs Fraction and compare performance
 	- Check to see whether Fraction is even necessary vs just using BigInt/BigUint
-		- If it is not, refactor the code to use BigInt/BigUint, then compare performance
+		- If it is not, refactor the code to use BigInt/BigUint, then compare performance.
+		- Add an alternative implementation that uses u128/i128 vs BigInt/BigUint and compare performance
 
