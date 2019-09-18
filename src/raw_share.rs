@@ -1,7 +1,7 @@
 use crate::geometry::*;
 use num_bigint_dig::{BigInt, BigUint, RandBigInt};
 use rand::rngs::{OsRng, StdRng};
-use rand::{SeedableRng, Rng, RngCore};
+use rand::{SeedableRng, Rng, RngCore, FromEntropy};
 use std::ops::Rem;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
@@ -29,10 +29,7 @@ pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: us
     let mut shares: Vec<Point> = Vec::new();
     let mut share_poly = Polynomial::new();
     
-    let mut rand = match OsRng::new() {
-        Ok(rng) => StdRng::from_rng(rng).unwrap(),
-        Err(_) => StdRng::from_rng(rand::thread_rng()).unwrap(),
-    };
+    let mut rand = StdRng::from_entropy();
 
     share_poly.set_term(Term::new(secret, 0));
 
