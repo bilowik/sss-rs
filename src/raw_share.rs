@@ -1,11 +1,13 @@
 use crate::geometry::*;
 use num_bigint_dig::{BigInt, BigUint, RandBigInt};
 use rand::rngs::{OsRng, StdRng};
-use rand::SeedableRng;
+use rand::{SeedableRng, Rng, RngCore};
 use std::ops::Rem;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use rand::seq::SliceRandom;
+use rand_chacha::ChaChaRng;
+
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data. 
 /// @secret: The secret value that is to be split into shares
@@ -165,7 +167,7 @@ fn shuffle_shares<T: Clone>(shares: Vec<T>, hashed_pass: &[u8; 32], shuffle: Shu
     let cap = shuffled.capacity();
 
     //let mut rand = ChaCha8Rng::from_seed(*hashed_pass);
-    let mut rand = StdRng::from_seed(*hashed_pass);
+    let mut rand = ChaChaRng::from_seed(*hashed_pass);
 
     let raw_vec_ptr: *mut T = shuffled.as_mut_ptr();
     std::mem::forget(shuffled);
