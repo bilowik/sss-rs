@@ -1,3 +1,4 @@
 pub mod geometry;
-pub mod share;
-pub use share::*; // Re-export the module
+pub mod sharer;
+pub mod raw_share;
+pub use sharer::*; // Re-export the module
