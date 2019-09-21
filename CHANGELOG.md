@@ -1,3 +1,11 @@
+## sss-rs 0.3.0 09/21/2019
+ - Sharer struct: Wrapped the original, function-only API with an struct with builder style construction with sane defaults.
+ 	- Handles sharing and reconstruction of shares. 
+	- Output shares to files with just a stem and a dir
+	- Output share N to a generic Write destination
+	- Test the reconstruction to ensure the secret can be recreated.
+ 	- A default prime number is an option, since keeping the prime a secret is not technically necessary.
+	
 ## sss-rs 0.2.0 09/17/2019
  - The main shuffle function now takes an arbitrary number of bytes instead of a password. Forcing a 
  specific hashing algorithm to be used was restrictive and inflexible, and using a trait object, while 
