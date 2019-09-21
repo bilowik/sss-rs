@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use std::ops::{Add, Sub, Mul, Div, Neg, Rem};
 use std::convert::{TryFrom, From};
 use crate::{impl_binary_op_simple, impl_binary_op};
-use num_traits::{Pow, One, Zero, sign::Signed};
+use num_traits::{Pow, One, Zero};
 
 /*
  * The Fraction struct is mainly used as the coefficients in the polynomial struct
