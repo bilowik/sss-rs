@@ -50,5 +50,9 @@ assert_eq!(secret, secret_recon);
 ```
 
 # TODO:
- - Clean up modulo operations, figure out why when given two equal primes the result is not 0.
- - Add more testing to sharer.rs
+	- Currently limited to 4GB files, and memory usage issues especially when working with many shares.
+		- Break up the reading in from files in chunks of N bytes to avoid high memory usage and overcome
+		  the file size limitation.
+	- The shuffle operation was left out of the new API, mainly because it would not function after the 
+	  above change is implemented. May re-implement a way to shuffle the data in-file. For now this 
+	  will be benched.
