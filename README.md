@@ -19,6 +19,7 @@ let sharer = Sharer::builder(secret)
 	.unwrap();
 sharer.share_to_files(dir, stem).unwrap();
 let recon = Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default).unwrap();
+assert_eq!(secret, *recon_secret);
 
 
 ```
