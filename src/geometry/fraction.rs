@@ -96,7 +96,14 @@ impl Fraction {
     /// Consuming modulo operation
     pub fn mod_fraction(self, rhs: Fraction) -> Self {
         let mut div = &self / &rhs;
-        div = div.floor(); // Floor to remove denominator, which brings @div to a whole number
+
+        if self.sign() == 1 {
+            div = div.floor();
+        }
+        else {
+            div = div.ceiling();
+        }
+
         (&self - &(&div * &rhs)).abs()
         
     }
@@ -129,7 +136,7 @@ impl Fraction {
     pub fn mod_bigint(self, rhs: BigInt) -> Self {
         let mut div = &self / &rhs;
 
-        if &self.numerator > &*BIGINT_ZERO {
+        if self.sign() == 1 {
             div = div.floor();
         }
         else {
