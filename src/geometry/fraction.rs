@@ -205,12 +205,6 @@ impl Fraction {
             self.numerator = -&self.numerator;
         }
 
-        if &self.numerator == &self.denominator {
-            self.numerator = BigInt::from(1);
-            self.denominator = BigInt::from(1);
-        }
-
-
         self
     }
 
