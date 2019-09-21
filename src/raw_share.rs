@@ -71,7 +71,7 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt,
                         .get_co()
                         .rem(prime)
                         .get_numerator()
-                        .to_bytes_le().1[0])
+                        .to_signed_bytes_le()[0])
         }
         Err(_) => Err(Error::NotEnoughShares { given: shares.len(), required: shares_needed }),
     }
