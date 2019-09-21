@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use std::ops::{Add, Sub, Mul, Div, Neg, Rem};
 use std::convert::{TryFrom, From};
 use crate::{impl_binary_op_simple, impl_binary_op};
-use num_traits::{Pow, One, Zero};
+use num_traits::{Pow, One, Zero, sign::Signed};
 
 /*
  * The Fraction struct is mainly used as the coefficients in the polynomial struct
@@ -126,24 +126,17 @@ impl Fraction {
 
     
     /// Consuming modulo operation with the right hand side being a BigInt
-    // TODO: Figure out why when both values are prime this function just returns the prime unless 
-    // the first if statement is in place
     pub fn mod_bigint(self, rhs: BigInt) -> Self {
-        if self.is_whole() && (self.numerator == rhs || -&self.numerator == rhs) {
-            Fraction::new(0, 1)
-        }
-        else if self.numerator.sign() != Sign::Minus {
-            let mut div = &self / &rhs;
-            div = div.floor();
-            (&self - &(&div * &rhs)).abs()
-        }
-        else {
-            // The bigint_dig library doesn't handle modulo in the way we need it to with negative
-            // numbers, so this gives us the output that we need.
-            (-(-self % &rhs) + &rhs)
-        }
+        let mut div = &self / &rhs;
+        div = div.floor();
+        (&self - &(&div * &rhs)).abs()
+    }
 
-
+    /// Calculates modulo when self may be negative. Separate from normal modulo since it relies on
+    /// it.
+    pub fn natural_mod_bigint(self, rhs: BigInt) -> Self {
+        // Equivalent to: ((self % rhs) + rhs) % rhs
+        (self.mod_bigint(rhs.clone()) + &rhs).mod_bigint(rhs.clone())
     }
 
 
@@ -346,7 +339,7 @@ impl_binary_op!(Fraction, BigInt, Add, add, add_bigint, Fraction);
 impl_binary_op!(Fraction, BigInt, Sub, sub, sub_bigint, Fraction);
 impl_binary_op!(Fraction, BigInt, Mul, mul, mul_bigint, Fraction);
 impl_binary_op!(Fraction, BigInt, Div, div, div_bigint, Fraction);
-impl_binary_op!(Fraction, BigInt, Rem, rem, mod_bigint, Fraction);
+impl_binary_op!(Fraction, BigInt, Rem, rem, natural_mod_bigint, Fraction);
 
 
 impl Neg for Fraction {
