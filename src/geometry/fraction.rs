@@ -128,36 +128,16 @@ impl Fraction {
     /// Consuming modulo operation with the right hand side being a BigInt
     pub fn mod_bigint(self, rhs: BigInt) -> Self {
         let mut div = &self / &rhs;
-        div = div.floor();
-        (&self - &(&div * &rhs)).abs()
-    }
 
-    /// Calculates modulo when self may be negative. Separate from normal modulo since it relies on
-    /// it.
-    pub fn natural_mod_bigint(self, rhs: BigInt) -> Self {
-        // Equivalent to: ((self % rhs) + rhs) % rhs
-        (self.mod_bigint(rhs.clone()) + &rhs).mod_bigint(rhs.clone())
-    }
-
-
-    /* The performance boost is very negligible due to the need for cloning the lhs in this
-     * scenario, since get_co() returns a reference which cannot be consumed by this function.
-    /// A self consuming modulo operation which avoids cloning the rhs operand
-    /// This is in testing, may not improve performance
-    pub fn mod_bigint_ref_optimized(self, rhs: &BigInt) -> Self {
-        if self.numerator.sign() != Sign::Minus {
-            let mut div = &self / rhs;
+        if &self.numerator > &*BIGINT_ZERO {
             div = div.floor();
-            (&self - &(&div * rhs)).abs()
         }
         else {
-            // The bigint_dig library doesn't handle modulo in the way we need it to with negative
-            // numbers, so this gives us the output that we need.
-            (-(-self % rhs) + rhs)
+            div = div.ceiling();
         }
 
+        (&self - &(&div * &rhs)).abs()
     }
-    */
      
 
     /// Consuming floor operation that "truncates" the fraction to a whole number
@@ -166,6 +146,28 @@ impl Fraction {
         self.denominator = BIGINT_ONE.clone();
         self
     }
+
+    pub fn ceiling(mut self) -> Self {
+        //self = self.reduce();
+        if !self.is_whole() {
+            self.numerator = (&self.numerator / &self.denominator) + (1 * self.sign());
+            self.denominator = BIGINT_ONE.clone();
+            self
+        }
+        else {
+            self
+        }
+    }
+
+    pub fn sign(&self) -> isize {
+        if &self.numerator > &*BIGINT_ZERO {
+            1
+        }
+        else {
+            -1
+        }
+    }
+
 
     /// Consuming absolute value operation, if the fraction is negative, it is made positive
     pub fn abs(self) -> Self {
@@ -333,7 +335,7 @@ impl_binary_op!(Fraction, BigInt, Add, add, add_bigint, Fraction);
 impl_binary_op!(Fraction, BigInt, Sub, sub, sub_bigint, Fraction);
 impl_binary_op!(Fraction, BigInt, Mul, mul, mul_bigint, Fraction);
 impl_binary_op!(Fraction, BigInt, Div, div, div_bigint, Fraction);
-impl_binary_op!(Fraction, BigInt, Rem, rem, natural_mod_bigint, Fraction);
+impl_binary_op!(Fraction, BigInt, Rem, rem, mod_bigint, Fraction);
 
 
 impl Neg for Fraction {
@@ -471,9 +473,12 @@ mod tests {
         use num_bigint_dig::BigInt;
         let frac = Fraction::new(21, 1);
         let frac2 = Fraction::new(7, 1);
+        let frac3 = Fraction::new(-21, 1);
         let big = BigInt::from(7usize);
+        let big2 = BigInt::from(8usize);
 
         assert_eq!(&frac % frac2, &frac % big);
+        assert_eq!(&frac3 % &big2, Fraction::new(3, 1));
 
 
     }
