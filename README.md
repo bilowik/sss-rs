@@ -30,10 +30,5 @@ assert_eq!(secret, secret_recon);
 ```
 
 # TODO:
-	- Add a wrapper object around the original functions to make a cleaner API
-	- Check to see whether Fraction is even necessary vs just using BigInt/BigUint
-		- If it is not, refactor the code to use BigInt/BigUint, then compare performance.
-		- Add an alternative implementation that uses u128/i128 vs BigInt/BigUint and compare performance			- I'm avoiding this refactor, due to much of the functionality of the geometry module relying
-			 on fractional intermediate values, in an attempt to do so, broke many operations and I had
-			 to revert all the work. I'll leave this as out of scope of the goals for this project.
-
+ - Clean up modulo operations, figure out why when given two equal primes the result is not 0.
+ - Add more testing to sharer.rs
