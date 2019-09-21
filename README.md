@@ -5,7 +5,26 @@ A purely functional (as in, working) and likely inefficient implementation of a 
 
 Not intended to be used in production code.
 
-# Example
+# New Example with the current API
+```
+let dir = "./";
+let stem = "test";
+let num_shares = 3;
+let secret: Vec<u8> = vec![5, 4, 9, 1, 2, 128, 43];
+let sharer = Sharer::builder(secret)
+	.shares_required(num_shares)
+	.shares_to_create(num_shares)
+	.coefficient_bits(32)
+	.build()
+	.unwrap();
+sharer.share_to_files(dir, stem).unwrap();
+let recon = Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default).unwrap();
+
+
+```
+
+
+# Old Example (makes use of raw_share functions)
 ```
 let mut rand = SmallRng::seed_from_u64(123u64);
 let secret: u8 = 23; // The secret to be split into shares
