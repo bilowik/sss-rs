@@ -25,6 +25,9 @@ enum Prime {
     NonDefault(BigInt),
 }
 
+/// Defines the location of the prime to the reconstructor, if it's the default prime, or if it was
+/// saved to a file. InFile doesn't have any data since the file should always be the stem appended
+/// with '.prime'
 #[derive(Debug, Clone)]
 pub enum PrimeLocation {
     InFile, // The prime file is location in a file and is not the default 
@@ -41,6 +44,7 @@ impl Deref for Prime {
     }
 }
 
+/// Creates shares from a given secret and reconstructs them back into the secret. 
 #[derive(Debug)]
 pub struct Sharer {
     share_lists: Vec<Vec<Point>>,
@@ -49,6 +53,12 @@ pub struct Sharer {
     shares_required: usize,
 }
 
+/// The builder struct to give the Sharer struct  builder style construction. 
+/// Defaults:
+///     - prime: Prime::Default(<The default prime>)
+///     - shares_required: 3
+///     - shares_to_create: 3
+///     - coefficient_bits: 32
 #[derive(Debug)]
 pub struct SharerBuilder {
     secret: Rc<Vec<u8>>, // The secret to be shared (Wrapped in an Rc to avoid having to make expensive
@@ -63,6 +73,8 @@ pub struct SharerBuilder {
 
 impl Sharer {
 
+    /// Constructs the builder with defualt values. See the builder documentation for the default
+    /// values.
     pub fn builder(secret: Vec<u8>) -> SharerBuilder {
         SharerBuilder { secret: Rc::new(secret), 
                         ..Default::default()
@@ -70,6 +82,7 @@ impl Sharer {
     }
 
     /// Shares a single share, designated by share_num, to a writable destination.
+    /// This function will panic if share_num is greater than the number of shares created.
     pub fn share<T: Write>(&self, dest: &mut T, share_num: usize) 
         -> Result<(), Box<dyn Error>> {
         dest.write_all(&(self.share_lists[share_num].len() as u64).to_be_bytes())?;
@@ -81,6 +94,7 @@ impl Sharer {
         Ok(())
     }
 
+    /// Outputs the prime to a given writeable destination.
     pub fn share_prime<T: Write>(&self, dest: &mut T) -> Result<(), Box<dyn Error>> {
         dest.write_all(self.prime.to_signed_bytes_be().as_slice())?;
         Ok(())
@@ -144,11 +158,14 @@ impl Sharer {
 
     }
 
+    /// Returns an immutable reference to the secret
     pub fn get_secret(&self) -> Rc<Vec<u8>> {
         self.secret.clone()
     }
 
 
+    /// Performs the reconstruction of the shares. No validation is done at the moment to verify
+    /// that the reconstructed secret is correct.
     pub fn reconstructor(dir: &str, stem: &str, shares_required: usize, 
                          prime_location: PrimeLocation) -> Result<Self, Box<dyn Error>> {
         let share_paths = generate_share_file_paths(dir, stem, shares_required);
@@ -231,6 +248,8 @@ impl Sharer {
 
 
 impl SharerBuilder {
+    
+    /// Builds the Sharer and constructs the shares.
     pub fn build(self) -> Result<Sharer, Box<dyn Error>> {
         if self.secret.len() == 0 {
             return Err(Box::new(SharerError::EmptySecret));
@@ -320,7 +339,6 @@ impl Default for SharerBuilder {
     }
 
 }
-
 
 
 #[derive(Debug, Clone)]
