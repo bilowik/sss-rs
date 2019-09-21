@@ -235,6 +235,9 @@ impl SharerBuilder {
         if self.secret.len() == 0 {
             return Err(Box::new(SharerError::EmptySecret));
         }
+        if self.shares_required < 2 || self.shares_to_create < 2 {
+            return Err(Box::new(SharerError::InvalidNumberOfShares(self.shares_required)));
+        }
         
         let share_lists = create_share_lists_from_secrets(   self.secret.as_slice(),
                                                         self.prime.deref(),
@@ -282,11 +285,17 @@ impl SharerBuilder {
 
     pub fn shares_required(mut self, shares_required: usize) -> Self {
         self.shares_required = shares_required;
+        if self.shares_required < self.shares_to_create {
+            self.shares_to_create = shares_required;
+        }
         self
     }
 
     pub fn shares_to_create(mut self, shares_to_create: usize) -> Self {
         self.shares_to_create = shares_to_create;
+        if self.shares_to_create < self.shares_required {
+            self.shares_required = self.shares_to_create;
+        }
         self
     }
 
@@ -319,6 +328,7 @@ pub enum SharerError {
     NotPrime(BigUint),
     ReconstructionNotEqual,
     EmptySecret,
+    InvalidNumberOfShares(usize),
 }
 
 impl std::fmt::Display for SharerError {
@@ -333,6 +343,9 @@ impl std::fmt::Display for SharerError {
             SharerError::EmptySecret => {
                 write!(f, "Cannot share an empty secret. Secret cannot have a length of 0")
             },
+            SharerError::InvalidNumberOfShares(given) => {
+                write!(f, "Must create at least 2 shares for sharing. Given: {}", given)
+            }
 
         }
     }
@@ -381,7 +394,7 @@ mod tests {
         let dir = "./";
         let stem = "test";
         let num_shares = 3;
-        let secret: Vec<u8> = vec![0];
+        let secret: Vec<u8> = vec![5, 4, 9, 1, 2, 128, 43];
         let sharer = Sharer::builder(secret)
             .shares_required(num_shares)
             .shares_to_create(num_shares)
@@ -393,7 +406,7 @@ mod tests {
 
         // Cleanup
         for path in generate_share_file_paths(dir, stem, num_shares) {
-            std::fs::remove_file(path);
+            std::fs::remove_file(path).unwrap();
         }
         
         assert_eq!(*sharer.get_secret(), *recon.get_secret()); 
@@ -402,23 +415,26 @@ mod tests {
     }
 
 
-    #[test]
-    fn stress_test() {
-        let mut rand = StdRng::from_entropy();
-        let num_tests = 1000; 
-        for i in 0..num_tests {
-            let secret_length = rand.gen_range::<u32, u32, u32>(10, 200);
-
-
-        }
-
-    }
 
     #[test]
     fn zero_test() {
+        let dir = "./";
+        let stem = "test";
+        let num_shares = 3;
+        let secret: Vec<u8> = vec![0];
+        let sharer = Sharer::builder(secret)
+            .shares_required(num_shares)
+            .shares_to_create(num_shares)
+            .coefficient_bits(32)
+            .build()
+            .unwrap();
+        sharer.share_to_files(dir, stem).unwrap();
+        let recon = Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default).unwrap();
 
-
-
+        for path in generate_share_file_paths(dir, stem, num_shares) {
+            std::fs::remove_file(path).unwrap();
+        }
+        assert_eq!(*sharer.get_secret(), *recon.get_secret());
 
     }
 
