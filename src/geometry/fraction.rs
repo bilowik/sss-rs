@@ -104,7 +104,7 @@ impl Fraction {
     /// Consuming add operation with the right hand side being a BigInt
     pub fn add_bigint(mut self, rhs: BigInt) -> Self {
         self.numerator = &self.numerator + (rhs * &self.denominator);
-        self
+        self.reduce()
     }
 
     /// Consuming sub operation with the right hand side being a BigInt
@@ -115,20 +115,24 @@ impl Fraction {
     /// Consuming multiplication operation with the right hand side being a BigInt
     pub fn mul_bigint(mut self, rhs: BigInt) -> Self {
         self.numerator = &self.numerator * rhs;
-        self
+        self.reduce()
     }
 
     /// Consuming division operation with the right hand side being a BigInt
     pub fn div_bigint(mut self, rhs: BigInt) -> Self {
         self.denominator = &self.denominator * rhs;
-        self
+        self.reduce()
     }
 
     
     /// Consuming modulo operation with the right hand side being a BigInt
+    // TODO: Figure out why when both values are prime this function just returns the prime unless 
+    // the first if statement is in place
     pub fn mod_bigint(self, rhs: BigInt) -> Self {
-       
-        if self.numerator.sign() != Sign::Minus {
+        if self.is_whole() && (self.numerator == rhs || -&self.numerator == rhs) {
+            Fraction::new(0, 1)
+        }
+        else if self.numerator.sign() != Sign::Minus {
             let mut div = &self / &rhs;
             div = div.floor();
             (&self - &(&div * &rhs)).abs()
@@ -207,6 +211,12 @@ impl Fraction {
             self.denominator = -&self.denominator;
             self.numerator = -&self.numerator;
         }
+
+        if &self.numerator == &self.denominator {
+            self.numerator = BigInt::from(1);
+            self.denominator = BigInt::from(1);
+        }
+
 
         self
     }
