@@ -15,8 +15,7 @@ An implementation of a secret sharing scheme in Rust.
 		  usage when using the raw_share API.
 
 	- Works on single bytes of data, meaning the Prime must be greater than 255. In the future this may 
-	  change to allow working on N bytes of data at a time to improve performance. The default prime in
-	  the Sharer API is a large 32-bit prime, which would need to change if to allow 32-bit processing.
+	  change to allow working on N bytes of data at a time to improve performance.
 
 Not intended to be used in production code.
 
@@ -75,5 +74,4 @@ assert_eq!(secret, secret_recon);
 		- One way to do this would be to take the hash of the first N bytes of the secret and place it at		   the end of the secret. The chances of incorrect reconstruction leading to the first N bytes 
 		  hashing to the incorrectly reconstructed hash placed at the end would be astronomically low.
 	- While working with individual bytes makes things much easier, it would be far more efficient to 
-	  work with larger chunks of data, the prime would just need to be checked to be greater than the 
-	  max of the given data size.
+	  work with larger chunks of data.
