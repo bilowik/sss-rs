@@ -424,7 +424,12 @@ mod tests {
 
         // Cleanup
         for path in generate_share_file_paths(dir, stem, num_shares) {
-            std::fs::remove_file(path).unwrap();
+            match std::fs::remove_file(&path) {
+                Ok(_) => (),
+                Err(e) => {
+                    println!("Couldn't cleanup file '{}': {}", &path, e);
+                }
+            }
         }
         
         assert_eq!(*sharer.get_secret(), *recon.get_secret()); 
