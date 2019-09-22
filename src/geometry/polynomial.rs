@@ -70,7 +70,6 @@ impl Polynomial {
 
     /// Gets the degree of the polynomial
     pub fn get_degree(&self) -> usize {
-        dbg!(&self);
         match self.terms.last() {
             Some(term) => {
                 // There is a last term, return its degree

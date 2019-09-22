@@ -258,7 +258,6 @@ impl Fraction {
 
         /*
         while ac != bc {
-            dbg!(&ac, &bc);
             if ac > bc {
                 ac = &ac - &bc;
             }
