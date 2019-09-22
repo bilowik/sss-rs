@@ -56,3 +56,6 @@ assert_eq!(secret, secret_recon);
 	- The shuffle operation was left out of the new API, mainly because it would not function after the 
 	  above change is implemented. May re-implement a way to shuffle the data in-file. For now this 
 	  will be benched.
+	- Add optional verification that allows for checking if a secret has been properly reconstructed.
+		- One way to do this would be to take the hash of the first N bytes of the secret and place it at		   the end of the secret. The chances of incorrect reconstruction leading to the first N bytes 
+		  hashing to the incorrectly reconstructed hash placed at the end would be astronomically low.
