@@ -14,8 +14,8 @@ An implementation of a secret sharing scheme in Rust.
 		  implemented for the Sharer API only to give devs the choice in how they want to handle memory
 		  usage when using the raw_share API.
 
-	- Works on single bytes of data, meaning the Prime must be greater than 255. In the future this may 
-	  change to allow working on N bytes of data at a time to improve performance.
+	- Works on single bytes of data. In the future this may change to allow working on N bytes of data at
+	  a time to improve performance.
 
 Not intended to be used in production code.
 
