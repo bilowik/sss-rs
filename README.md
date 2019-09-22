@@ -1,7 +1,17 @@
 # sss-rs
 [![Build Status](https://travis-ci.com/bilowik/sss-rs.svg?branch=master)](https://travis-ci.com/bilowik/sss-rs)
 
-A purely functional (as in, working) and likely inefficient implementation of a Secret Sharing Scheme in Rust
+An implementation of a secret sharing scheme in Rust. Some things to note:
+	- Depending on the configuration you decide, the shares may not be the same size as the secret,
+	  but this is okay. 
+	- Currently has a relatively high memory footprint when working with large secrets. This is planned
+	  to be fixed in 0.3.2/0.4.0
+		- To continue giving the raw_share API as much flexibility as possible, this will likely be 
+		  implemented for the Sharer API only to give devs the choice in how they want to handle memory
+		  usage when using the raw_share API.
+	- Works on single bytes of data, meaning the Prime must be greater than 255. In the future this may 
+	  change to allow working on N bytes of data at a time to improve performance. The default prime in
+	  the Sharer API is a large 32-bit prime, which would need to change if to allow 32-bit processing.
 
 Not intended to be used in production code.
 
@@ -59,3 +69,6 @@ assert_eq!(secret, secret_recon);
 	- Add optional verification that allows for checking if a secret has been properly reconstructed.
 		- One way to do this would be to take the hash of the first N bytes of the secret and place it at		   the end of the secret. The chances of incorrect reconstruction leading to the first N bytes 
 		  hashing to the incorrectly reconstructed hash placed at the end would be astronomically low.
+	- While working with individual bytes makes things much easier, it would be far more efficient to 
+	  work with larger chunks of data, the prime would just need to be checked to be greater than the 
+	  max of the given data size.
