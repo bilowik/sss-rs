@@ -1,3 +1,6 @@
+## sss-rs 0.3.1 09/22/2019
+ - Tests were making use of the same dir and stem, and since Rust unit tests are run in multiple threads by default, this caused occasional test failures when the two tests happened to be running at the same time. The test files are now named based on the name of the test to prevent this issue again
+
 ## sss-rs 0.3.0 09/21/2019
  - Sharer struct: Wrapped the original, function-only API with an struct with builder style construction with sane defaults.
  	- Handles sharing and reconstruction of shares. 
