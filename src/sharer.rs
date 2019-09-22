@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn basic_share_reconstruction() {
         let dir = "./";
-        let stem = "test";
+        let stem = "basic_share_reconstruction_test";
         let num_shares = 3;
         let secret: Vec<u8> = vec![5, 4, 9, 1, 2, 128, 43];
         let sharer = Sharer::builder(secret)
@@ -420,7 +420,14 @@ mod tests {
             .build()
             .unwrap();
         sharer.share_to_files(dir, stem).unwrap();
-        let recon = Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default).unwrap();
+       
+        let recon = match Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default) {
+            Ok(secret) => secret,
+            Err(e) => {
+                println!("Couldn't recontruct shares: {}", e);
+                panic!("Couldn't reconstruct shares: {}", e);
+            }
+        };
 
         // Cleanup
         for path in generate_share_file_paths(dir, stem, num_shares) {
@@ -442,7 +449,7 @@ mod tests {
     #[test]
     fn zero_test() {
         let dir = "./";
-        let stem = "test";
+        let stem = "zero_test";
         let num_shares = 3;
         let secret: Vec<u8> = vec![0];
         let sharer = Sharer::builder(secret)
@@ -453,9 +460,13 @@ mod tests {
             .unwrap();
         sharer.share_to_files(dir, stem).unwrap();
         let recon = Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default).unwrap();
-
         for path in generate_share_file_paths(dir, stem, num_shares) {
-            std::fs::remove_file(path).unwrap();
+            match std::fs::remove_file(&path) {
+                Ok(_) => (),
+                Err(e) => {
+                    println!("Couldn't cleanup file '{}': {}", &path, e);
+                }
+            }
         }
         assert_eq!(*sharer.get_secret(), *recon.get_secret());
 
