@@ -3,17 +3,21 @@ use crate::geometry::Point;
 use rand::{Rng, FromEntropy};
 use rand::rngs::StdRng;
 use num_bigint_dig::{BigInt, BigUint, RandPrime};
-use std::rc::Rc;
 use std::io::{Read, Write};
 use std::error::Error;
 use std::fs::File;
 use std::path::Path;
 use std::ops::Deref;
 use lazy_static::lazy_static;
+use crypto::sha3::Sha3;
+use crypto::digest::Digest;
 
+// constants
 lazy_static! {
     pub static ref DEFAULT_PRIME: BigInt = BigInt::from(4173179203 as u32);
 }
+
+const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 
 
 
@@ -48,9 +52,10 @@ impl Deref for Prime {
 #[derive(Debug)]
 pub struct Sharer {
     share_lists: Vec<Vec<Point>>,
-    secret: Rc<Vec<u8>>,
+    secret: Vec<u8>,
     prime: Prime,
     shares_required: usize,
+    verify: bool
 }
 
 /// The builder struct to give the Sharer struct  builder style construction. 
@@ -61,12 +66,12 @@ pub struct Sharer {
 ///     - coefficient_bits: 32
 #[derive(Debug)]
 pub struct SharerBuilder {
-    secret: Rc<Vec<u8>>, // The secret to be shared (Wrapped in an Rc to avoid having to make expensive
-                         // copies)
+    secret: Vec<u8>, // The secret to be shared 
     prime: Prime, // The prime number use to bring the underlying share polynomial into a finite field
     shares_required: usize, // The number of shares needed to reconstruct the secret
     shares_to_create: usize, // The number of shares to generate
     coefficient_bits: usize, // The number of bits the random coefficients of the polynomial will have.
+    verify: bool,            // Whether or not to append a hash for verification to the end of the secret
 }
 
 
@@ -76,7 +81,7 @@ impl Sharer {
     /// Constructs the builder with defualt values. See the builder documentation for the default
     /// values.
     pub fn builder(secret: Vec<u8>) -> SharerBuilder {
-        SharerBuilder { secret: Rc::new(secret), 
+        SharerBuilder { secret: secret, 
                         ..Default::default()
         }
     }
@@ -140,7 +145,11 @@ impl Sharer {
 
         self.share_to_files(dir, stem)?;
 
-        let recon = Sharer::reconstructor(dir, stem, self.shares_required, prime_location.clone())?;
+        let recon = Sharer::reconstructor(dir, 
+                                          stem, 
+                                          self.shares_required, 
+                                          prime_location.clone(),
+                                          self.verify)?;
         
         if recon.get_secret() != self.get_secret() {
             return Err(Box::new(SharerError::ReconstructionNotEqual));
@@ -159,15 +168,32 @@ impl Sharer {
     }
 
     /// Returns an immutable reference to the secret
-    pub fn get_secret(&self) -> Rc<Vec<u8>> {
-        self.secret.clone()
+    pub fn get_secret<'a>(&'a self) -> &'a [u8] {
+        if self.verify {
+            // The secret contains a hash at the end that is not a part of the secret
+            &self.secret[0..self.secret.len() - 64]
+        }
+        else {
+            &self.secret
+        }
     }
+
+    pub fn get_hash_hex(&self) -> String {
+        hex::encode(calculate_hash(
+            if self.verify {
+                &self.secret[0..self.secret.len() - 64]
+            }
+            else {
+                &self.secret
+            }))
+    }
+            
 
 
     /// Performs the reconstruction of the shares. No validation is done at the moment to verify
     /// that the reconstructed secret is correct.
     pub fn reconstructor(dir: &str, stem: &str, shares_required: usize, 
-                         prime_location: PrimeLocation) -> Result<Self, Box<dyn Error>> {
+                         prime_location: PrimeLocation, verify: bool) -> Result<Self, Box<dyn Error>> {
         let share_paths = generate_share_file_paths(dir, stem, shares_required);
         
         let prime = match prime_location {
@@ -185,15 +211,6 @@ impl Sharer {
             let mut share_file = File::open(&share_paths[share_file_index])?;
             share_file.read_exact(&mut buf_8)?;
             let num_shares = u64::from_be_bytes(buf_8);
-            // TODO: Ensure support for secrets greater than 4GB, a custom Vec-like data type that
-            // can accept u128 indices by appending extra vectors would work. This needs to be impl
-            // at the library level as well however.
-            // Having 4 GB of data in a vec is not exactly a great practice so possibly a better
-            // alternative is some sort of buffered reading and use of the data. 
-            // IE: Loop through the first 1 GB / shares_needed and calculate the secret up to that
-            // point. This would however, make the shuffle operation impossible unless done
-            // in-file.
-            // TODO: Move this information into the todo file
             let mut share_list: Vec<BigInt> = Vec::with_capacity(num_shares as usize); 
             
             for _ in 0..num_shares {
@@ -233,11 +250,26 @@ impl Sharer {
                                                                 &*prime,
                                                                 shares_required)?;
 
+        if verify {
+            let hash = &recon_secret[(recon_secret.len() - 64)..];
+            let hasher_output = calculate_hash(&recon_secret.as_slice()[0..(recon_secret.len() - 64)]);
+
+            if &hash != &hasher_output.as_slice() {
+                let orig_hash = hex::encode(hash);
+                let curr_hash = hex::encode(hasher_output);
+                return Err(Box::new(SharerError::VerificationFailure(orig_hash, curr_hash)));
+            }
+
+
+
+        }
+
         Ok(Sharer {
             share_lists: share_lists,
-            secret: Rc::new(recon_secret),
+            secret: recon_secret,
             prime: prime,
             shares_required: shares_required,
+            verify: verify
         })
 
 
@@ -250,13 +282,20 @@ impl Sharer {
 impl SharerBuilder {
     
     /// Builds the Sharer and constructs the shares.
-    pub fn build(self) -> Result<Sharer, Box<dyn Error>> {
+    pub fn build(mut self) -> Result<Sharer, Box<dyn Error>> {
+
         if self.secret.len() == 0 {
             return Err(Box::new(SharerError::EmptySecret));
         }
         if self.shares_required < 2 || self.shares_to_create < 2 {
             return Err(Box::new(SharerError::InvalidNumberOfShares(self.shares_required)));
         }
+
+        // Check for the verify flag and if it is true append a hash
+        if self.verify {
+            let hasher_output = calculate_hash(&self.secret.as_slice());
+            self.secret.extend_from_slice(&hasher_output);
+        }            
         
         let share_lists = create_share_lists_from_secrets(   self.secret.as_slice(),
                                                         self.prime.deref(),
@@ -264,12 +303,14 @@ impl SharerBuilder {
                                                         self.shares_to_create,
                                                         self.coefficient_bits)?;
 
-        Ok(Sharer {
+            Ok(Sharer {
             share_lists: share_lists,
-            secret: self.secret.clone(),
-            prime: self.prime.clone(),
+            secret: self.secret,
+            prime: self.prime,
             shares_required: self.shares_required,
+            verify: self.verify,
         })
+
     }
 
     /// Use a specific prime for the generation of the shares. The given prime is checked with an
@@ -318,8 +359,13 @@ impl SharerBuilder {
         self
     }
 
+    pub fn verify(mut self, verify: bool) -> Self {
+        self.verify = verify;
+        self
+    }
+
     pub fn secret(mut self, secret: Vec<u8>) -> Self {
-        self.secret = Rc::new(secret);
+        self.secret = secret;
         self
     }
 
@@ -329,11 +375,12 @@ impl SharerBuilder {
 impl Default for SharerBuilder {
     fn default() -> Self {
         Self {
-            secret: Rc::new(Vec::with_capacity(0)),
+            secret: Vec::with_capacity(0),
             coefficient_bits: 32,
             shares_required: 3,
             shares_to_create: 3,
-            prime: Prime::Default(DEFAULT_PRIME.clone())
+            prime: Prime::Default(DEFAULT_PRIME.clone()),
+            verify: true,
         }
 
     }
@@ -347,6 +394,7 @@ pub enum SharerError {
     ReconstructionNotEqual,
     EmptySecret,
     InvalidNumberOfShares(usize),
+    VerificationFailure(String, String),
 }
 
 impl std::fmt::Display for SharerError {
@@ -363,7 +411,15 @@ impl std::fmt::Display for SharerError {
             },
             SharerError::InvalidNumberOfShares(given) => {
                 write!(f, "Must create at least 2 shares for sharing. Given: {}", given)
-            }
+            },
+            SharerError::VerificationFailure(original_hash, calculated_hash) => {
+                write!(f, 
+"Verification of reconstructed secret failed. Mismatched hashes:
+Original Hash: {}
+Calculated Hash: {}",
+                      original_hash,
+                      calculated_hash)
+            },
 
         }
     }
@@ -401,6 +457,23 @@ fn generate_prime_file_path(dir: &str, prime_file: &str) -> String {
 
 
 
+fn calculate_hash(secret: &[u8]) -> Vec<u8> {
+    let hash_input_num_bytes = if secret.len() < NUM_FIRST_BYTES_FOR_VERIFY {
+        secret.len()
+    }
+    else {
+        NUM_FIRST_BYTES_FOR_VERIFY
+    };
+
+    let mut hasher_output = [0u8; 64];
+    let mut hasher = Sha3::sha3_512();
+    hasher.input(&secret[0..hash_input_num_bytes]);
+    hasher.result(&mut hasher_output);
+    hasher_output.to_vec()
+}
+
+
+
 
 
 #[cfg(test)]
@@ -417,11 +490,12 @@ mod tests {
             .shares_required(num_shares)
             .shares_to_create(num_shares)
             .coefficient_bits(32)
+            .verify(true)
             .build()
             .unwrap();
         sharer.share_to_files(dir, stem).unwrap();
        
-        let recon = match Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default) {
+        let recon = match Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default, true) {
             Ok(secret) => secret,
             Err(e) => {
                 println!("Couldn't recontruct shares: {}", e);
@@ -459,7 +533,7 @@ mod tests {
             .build()
             .unwrap();
         sharer.share_to_files(dir, stem).unwrap();
-        let recon = Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default).unwrap();
+        let recon = Sharer::reconstructor(dir, stem, num_shares, PrimeLocation::Default, true).unwrap();
         for path in generate_share_file_paths(dir, stem, num_shares) {
             match std::fs::remove_file(&path) {
                 Ok(_) => (),
@@ -468,9 +542,27 @@ mod tests {
                 }
             }
         }
-        assert_eq!(*sharer.get_secret(), *recon.get_secret());
+        assert_eq!(sharer.get_secret(), recon.get_secret());
 
     }
+
+    #[test]
+    #[should_panic]
+    fn fail_verify() {
+        let dir = "./";
+        let stem = "fail_verify";
+        let secret = vec![1,2,3,4,5];
+        let sharer = Sharer::builder(secret).build().unwrap();
+        sharer.share_to_files(dir, stem).unwrap();
+        
+        let mut bytes = std::fs::read("./fail_verify.s0").unwrap();
+        bytes[12] = bytes[12] ^ 255u8;
+        std::fs::write("./fail_verify.s0", bytes).unwrap();
+        let recon = Sharer::reconstructor(dir, stem, 3, PrimeLocation::Default, true).unwrap(); 
+        
+    } 
+
+
 
 
 }
