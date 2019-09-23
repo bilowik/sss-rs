@@ -298,7 +298,7 @@ impl SharerBuilder {
     /// astronomically low chance for being incorrect. It's recommended to use the default prime or
     /// randomly generate one with rand_prime
     pub fn prime(mut self, prime: i64) -> Result<Self, SharerError> {
-        if primal::is_prime(prime as u64) {
+        if primal_check::miller_rabin(prime as u64) {
             self.prime = Prime::NonDefault(prime);
             Ok(self)
         }
@@ -322,7 +322,7 @@ impl SharerBuilder {
     fn gen_random_prime<T: Rng>(rng: &mut T) -> i64 {
         let mut maybe_prime: i64 = rng.gen_range(std::i16::MAX as i32, std::i32::MAX as i32) as i64;
         maybe_prime = maybe_prime | 1; // Ensure the number is odd
-        while !primal::is_prime(maybe_prime as u64) {
+        while !primal_check::miller_rabin(maybe_prime as u64) {
             // Not prime, step down by 2
             maybe_prime = maybe_prime - 2;
         }
@@ -544,7 +544,7 @@ mod tests {
         let mut bytes = std::fs::read("./fail_verify.s0").unwrap();
         bytes[12] = bytes[12] ^ 255u8;
         std::fs::write("./fail_verify.s0", bytes).unwrap();
-        let recon = Sharer::reconstructor(dir, stem, 3, PrimeLocation::Default, true).unwrap(); 
+        let _recon = Sharer::reconstructor(dir, stem, 3, PrimeLocation::Default, true).unwrap(); 
        
     } 
 

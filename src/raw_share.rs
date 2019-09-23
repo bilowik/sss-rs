@@ -414,7 +414,6 @@ mod tests {
         hasher.input(pass.as_bytes());
         hasher.result(&mut hashed_pass);
 
-        let mut rand = StdRng::seed_from_u64(123);
         let prime: i64 = DEFAULT_PRIME;
         let share_lists = create_share_lists_from_secrets(secret.as_bytes(), prime,
                         3, 3).unwrap();
