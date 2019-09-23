@@ -2,20 +2,14 @@ use crate::raw_share::*;
 use crate::geometry::Point;
 use rand::{Rng, FromEntropy};
 use rand::rngs::StdRng;
-use num_bigint_dig::{BigInt, BigUint, RandPrime};
 use std::io::{Read, Write};
 use std::error::Error;
 use std::fs::File;
 use std::path::Path;
 use std::ops::Deref;
-use lazy_static::lazy_static;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 
-// constants
-lazy_static! {
-    pub static ref DEFAULT_PRIME: BigInt = BigInt::from(4173179203 as u32);
-}
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 
@@ -25,8 +19,8 @@ const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 /// statically. If the default one is used it doesn't make sense to write it to a file
 #[derive(Debug, Clone)]
 enum Prime {
-    Default(BigInt),
-    NonDefault(BigInt),
+    Default(i64),
+    NonDefault(i64),
 }
 
 /// Defines the location of the prime to the reconstructor, if it's the default prime, or if it was
@@ -39,7 +33,7 @@ pub enum PrimeLocation {
 }
 
 impl Deref for Prime {
-    type Target = BigInt;
+    type Target = i64;
     fn deref(&self) -> &Self::Target {
         match self {
             Prime::Default(prime) => &prime,
@@ -63,14 +57,12 @@ pub struct Sharer {
 ///     - prime: Prime::Default(<The default prime>)
 ///     - shares_required: 3
 ///     - shares_to_create: 3
-///     - coefficient_bits: 32
 #[derive(Debug)]
 pub struct SharerBuilder {
     secret: Vec<u8>, // The secret to be shared 
     prime: Prime, // The prime number use to bring the underlying share polynomial into a finite field
     shares_required: usize, // The number of shares needed to reconstruct the secret
     shares_to_create: usize, // The number of shares to generate
-    coefficient_bits: usize, // The number of bits the random coefficients of the polynomial will have.
     verify: bool,            // Whether or not to append a hash for verification to the end of the secret
 }
 
@@ -90,18 +82,16 @@ impl Sharer {
     /// This function will panic if share_num is greater than the number of shares created.
     pub fn share<T: Write>(&self, dest: &mut T, share_num: usize) 
         -> Result<(), Box<dyn Error>> {
-        dest.write_all(&(self.share_lists[share_num].len() as u64).to_be_bytes())?;
         for share in &self.share_lists[share_num] {
-            let bytes = share.y().get_numerator().to_signed_bytes_be();
-            dest.write_all(&(bytes.len() as u32).to_be_bytes())?;
-            dest.write_all(share.y().get_numerator().to_signed_bytes_be().as_slice())?;
+            let bytes = share.y().get_numerator().to_be_bytes();
+            dest.write_all(&bytes)?;
         }
         Ok(())
     }
 
     /// Outputs the prime to a given writeable destination.
     pub fn share_prime<T: Write>(&self, dest: &mut T) -> Result<(), Box<dyn Error>> {
-        dest.write_all(self.prime.to_signed_bytes_be().as_slice())?;
+        dest.write_all(&self.prime.to_be_bytes())?;
         Ok(())
     }
 
@@ -197,33 +187,26 @@ impl Sharer {
         let share_paths = generate_share_file_paths(dir, stem, shares_required);
         
         let prime = match prime_location {
-            PrimeLocation::Default => Prime::Default(DEFAULT_PRIME.clone()),
+            PrimeLocation::Default => Prime::Default(DEFAULT_PRIME),
             PrimeLocation::InFile => {
-                let prime_path = generate_prime_file_path(dir, stem);
-                let bytes = std::fs::read(prime_path)?;
-                Prime::NonDefault(BigInt::from_signed_bytes_be(bytes.as_slice()))
+                let mut prime_file = File::open(generate_prime_file_path(dir, stem))?;
+                let mut bytes = [0u8; 8];
+                prime_file.read_exact(&mut bytes)?;
+                Prime::NonDefault(i64::from_be_bytes(bytes))
             }
         };
 
-        let mut share_lists: Vec<Vec<BigInt>> = Vec::with_capacity(shares_required);
+        let mut share_lists: Vec<Vec<i64>> = Vec::with_capacity(shares_required);
         for share_file_index in 0..shares_required {
-            let mut buf_8: [u8; 8] = [0; 8];
             let mut share_file = File::open(&share_paths[share_file_index])?;
-            share_file.read_exact(&mut buf_8)?;
-            let num_shares = u64::from_be_bytes(buf_8);
-            let mut share_list: Vec<BigInt> = Vec::with_capacity(num_shares as usize); 
+            let num_shares = std::fs::metadata(&share_paths[share_file_index])?
+                                                .len() / std::mem::size_of::<i64>() as u64;
+            let mut share_list: Vec<i64> = Vec::with_capacity(num_shares as usize); 
             
             for _ in 0..num_shares {
-                let mut buf_4: [u8; 4] = [0; 4];
-                (&mut share_file).read_exact(&mut buf_4)?;
-                let bytes_for_next_share = u32::from_be_bytes(buf_4);
-                let mut share_bytes: Vec<u8> = Vec::with_capacity(bytes_for_next_share as usize);
-
-                // 'take' the next 'bytes_for_next_share' bytes and read them all into the
-                // 'share_bytes'
-                (&mut share_file).take(bytes_for_next_share as u64).read_to_end(&mut share_bytes)?;
-
-                let share = BigInt::from_signed_bytes_be(share_bytes.as_slice());
+                let mut buf_8: [u8; 8] = [0; 8];
+                (&mut share_file).read_exact(&mut buf_8)?;
+                let share = i64::from_be_bytes(buf_8);
                 share_list.push(share);
             }
 
@@ -245,9 +228,10 @@ impl Sharer {
                                     Point::new(*(&x_val_counter), y_val)
                                 }).collect()
                          }).collect();
-       
+      
+        // TODO: Try avoiding having to clone share_lists
         let recon_secret = reconstruct_secrets_from_share_lists(share_lists.clone(),
-                                                                &*prime,
+                                                                *prime,
                                                                 shares_required)?;
 
         if verify {
@@ -259,8 +243,6 @@ impl Sharer {
                 let curr_hash = hex::encode(hasher_output);
                 return Err(Box::new(SharerError::VerificationFailure(orig_hash, curr_hash)));
             }
-
-
 
         }
 
@@ -298,27 +280,26 @@ impl SharerBuilder {
         }            
         
         let share_lists = create_share_lists_from_secrets(   self.secret.as_slice(),
-                                                        self.prime.deref(),
+                                                        *self.prime.deref(),
                                                         self.shares_required,
-                                                        self.shares_to_create,
-                                                        self.coefficient_bits)?;
+                                                        self.shares_to_create)?;
 
             Ok(Sharer {
             share_lists: share_lists,
             secret: self.secret,
             prime: self.prime,
             shares_required: self.shares_required,
-            verify: self.verify,
-        })
+            verify: self.verify})
+
 
     }
 
     /// Use a specific prime for the generation of the shares. The given prime is checked with an
     /// astronomically low chance for being incorrect. It's recommended to use the default prime or
     /// randomly generate one with rand_prime
-    pub fn prime(mut self, prime: BigUint) -> Result<Self, SharerError> {
-        if num_bigint_dig::prime::probably_prime(&prime, 25) {
-            self.prime = Prime::NonDefault(prime.into());
+    pub fn prime(mut self, prime: i64) -> Result<Self, SharerError> {
+        if primal::is_prime(prime as u64) {
+            self.prime = Prime::NonDefault(prime);
             Ok(self)
         }
         else {
@@ -330,18 +311,26 @@ impl SharerBuilder {
     /// Uses the given RNG to seed the RNG that generates the prime number. The prime number will
     /// be generated with prime_bits number of bits. If None is specified for the RNG, then StdRng
     /// is used and seeded from entropy.
-    pub fn rand_prime<T: Rng>(mut self, rng: Option<T>, prime_bits: usize) -> Self {
+    pub fn rand_prime<T: Rng>(mut self, rng: Option<T>) -> Self {
         self.prime = match rng {
-            Some(mut rng) => Prime::NonDefault(rng.gen_prime(prime_bits).into()),
-            None => Prime::NonDefault(StdRng::from_entropy().gen_prime(prime_bits).into()),
+            Some(mut rng) => Prime::NonDefault(Self::gen_random_prime(&mut rng)),
+            None => Prime::NonDefault(Self::gen_random_prime(&mut StdRng::from_entropy())),
         };
         self
     }
 
-    pub fn coefficient_bits(mut self, coefficient_bits: usize) -> Self {
-        self.coefficient_bits = coefficient_bits;
-        self
+    fn gen_random_prime<T: Rng>(rng: &mut T) -> i64 {
+        let mut maybe_prime: i64 = rng.gen_range(std::i16::MAX as i32, std::i32::MAX as i32) as i64;
+        maybe_prime = maybe_prime | 1; // Ensure the number is odd
+        while !primal::is_prime(maybe_prime as u64) {
+            // Not prime, step down by 2
+            maybe_prime = maybe_prime - 2;
+        }
+
+        maybe_prime
     }
+
+
 
     pub fn shares_required(mut self, shares_required: usize) -> Self {
         self.shares_required = shares_required;
@@ -376,10 +365,9 @@ impl Default for SharerBuilder {
     fn default() -> Self {
         Self {
             secret: Vec::with_capacity(0),
-            coefficient_bits: 32,
             shares_required: 3,
             shares_to_create: 3,
-            prime: Prime::Default(DEFAULT_PRIME.clone()),
+            prime: Prime::Default(DEFAULT_PRIME),
             verify: true,
         }
 
@@ -390,7 +378,7 @@ impl Default for SharerBuilder {
 
 #[derive(Debug, Clone)]
 pub enum SharerError {
-    NotPrime(BigUint),
+    NotPrime(i64),
     ReconstructionNotEqual,
     EmptySecret,
     InvalidNumberOfShares(usize),
@@ -489,7 +477,6 @@ mod tests {
         let sharer = Sharer::builder(secret)
             .shares_required(num_shares)
             .shares_to_create(num_shares)
-            .coefficient_bits(32)
             .verify(true)
             .build()
             .unwrap();
@@ -529,7 +516,6 @@ mod tests {
         let sharer = Sharer::builder(secret)
             .shares_required(num_shares)
             .shares_to_create(num_shares)
-            .coefficient_bits(32)
             .build()
             .unwrap();
         sharer.share_to_files(dir, stem).unwrap();

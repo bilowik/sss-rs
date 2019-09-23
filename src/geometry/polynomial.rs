@@ -192,12 +192,12 @@ impl Polynomial {
 
 
     /// Get the corresponding 'y' value to the given 'x' value
-    pub fn get_y_value(&self, x_val: &Fraction) -> Fraction {
+    pub fn get_y_value(&self, x_val: Fraction) -> Fraction {
         let mut frac = Fraction::new(0, 1);
 
         for term_index in 0..self.terms.len() {
             let curr_term = &self.terms[term_index];
-            frac = frac + ((x_val.clone().pow(curr_term.get_degree())) * curr_term.get_co());
+            frac = frac + ((x_val.pow(curr_term.get_degree() as u32)) * curr_term.get_co());
         }
 
         frac
@@ -597,10 +597,10 @@ mod test {
             .build();
         let poly3 = Polynomial::default();
 
-        assert_eq!(poly.get_y_value(&0.into()), 2.into());
-        assert_eq!(poly.get_y_value(&1.into()), 3.into());
-        assert_eq!(poly2.get_y_value(&2.into()), (-4).into());
-        assert_eq!(poly3.get_y_value(&10000.into()), 0.into());
+        assert_eq!(poly.get_y_value(0.into()), 2.into());
+        assert_eq!(poly.get_y_value(1.into()), 3.into());
+        assert_eq!(poly2.get_y_value(2.into()), (-4).into());
+        assert_eq!(poly3.get_y_value(10000.into()), 0.into());
 
     }
 

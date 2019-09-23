@@ -1,5 +1,5 @@
 use crate::geometry::*;
-use num_bigint_dig::{BigInt, BigUint, RandBigInt};
+use rand::Rng;
 use rand::rngs::StdRng;
 use rand::{SeedableRng, FromEntropy};
 use std::ops::Rem;
@@ -7,6 +7,9 @@ use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaChaRng;
+
+
+pub const DEFAULT_PRIME: i64 = 1231;
 
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data. 
@@ -22,8 +25,8 @@ use rand_chacha::ChaChaRng;
 ///     hide the secret. If @co_max_bits == 0, this function will panic.
 ///
 /// Return: This function will return Ok<Vec<Point>> upon success. 
-pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: usize, 
-                        shares_to_create: usize, co_max_bits: usize) -> Result<Vec<Point>, Error> {
+pub fn create_shares_from_secret(secret: u8, prime: i64, shares_required: usize, 
+                        shares_to_create: usize) -> Result<Vec<Point>, Error> {
 
 
     let mut shares: Vec<Point> = Vec::new();
@@ -33,15 +36,18 @@ pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: us
 
     share_poly.set_term(Term::new(secret, 0));
 
-    for i in 1..shares_required {
-        let curr_co: BigUint = rand.gen_biguint(co_max_bits);
-        share_poly.set_term(Term::new(curr_co, i as usize));
+    for i in 1usize..shares_required {
+        let curr_co: i16 = rand.gen();
+        // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
+        // values
+        
+        share_poly.set_term(Term::new(curr_co as i64, i));
     }
 
 
     for i in 1..=shares_to_create {
-        let curr_x = Fraction::new(i, 1);
-        let curr_y: Fraction = share_poly.get_y_value(&curr_x) % prime;
+        let curr_x = Fraction::new(i as i64, 1);
+        let curr_y: Fraction = share_poly.get_y_value(curr_x) % prime;
         shares.push(Point::new(curr_x, curr_y));
     }
 
@@ -63,15 +69,14 @@ pub fn create_shares_from_secret(secret: u8, prime: &BigInt, shares_required: us
 ///     efficieny.
 ///
 /// This will return an error if @shares.len() < shares_needed.
-pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt, 
+pub fn reconstruct_secret(shares: Vec<Point>, prime: i64, 
                           shares_needed: usize) -> Result<u8, Error> {
     match Polynomial::from_points(&shares, shares_needed - 1) {
         Ok(poly) => {
             Ok(poly.get_term(0)
                         .get_co()
                         .rem(prime)
-                        .get_numerator()
-                        .to_bytes_le().1[0])
+                        .get_numerator() as u8)
         }
         Err(_) => Err(Error::NotEnoughShares { given: shares.len(), required: shares_needed }),
     }
@@ -87,8 +92,8 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: &BigInt,
 /// since that is how they would be distributed.
 /// @secret: A slice of bytes to be used to create the vector of share vectors
 /// ... For the rest of the arguments, see @create_shares_from_secret
-pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_required: usize,
-                                   shares_to_create: usize, co_max_bits: usize,
+pub fn create_share_lists_from_secrets(secret: &[u8], prime: i64, shares_required: usize,
+                                   shares_to_create: usize
                                    ) -> Result<Vec<Vec<Point>>, Error> {
     if secret.len() == 0 {
         return Err(Error::EmptySecretArray)
@@ -100,8 +105,7 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_req
         match create_shares_from_secret(*s, 
                                            prime, 
                                            shares_required,
-                                           shares_to_create,
-                                           co_max_bits) {
+                                           shares_to_create) {
             Ok(shares) => {
                 // Now this list needs to be transposed:
                 list_of_share_lists.push(shares);
@@ -125,7 +129,7 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: &BigInt, shares_req
 /// @share_lists: A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
 ///     of the secret.
 /// ... For the rest of the arguments, see @reconstruct_secret
-pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime: &BigInt,
+pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime: i64,
                                             shares_needed: usize) -> Result<Vec<u8>, Error> {
     let mut secrets: Vec<u8> = Vec::with_capacity(share_lists.len());
     let share_lists = transpose_vec_matrix(&share_lists)?;
@@ -292,7 +296,6 @@ impl std::error::Error for Error {}
 
 #[cfg(test)]
 mod tests {
-    use num_bigint_dig::RandPrime;
     use rand::SeedableRng;
     use rand::Rng;
     use super::*;
@@ -302,6 +305,7 @@ mod tests {
     fn many_test() {
 
         let num_iters = 10;
+        let prime = DEFAULT_PRIME;
 
         let mut rand = SmallRng::seed_from_u64(123u64);
 
@@ -309,21 +313,14 @@ mod tests {
             let secret: u8 = rand.gen_range(1, 256) as u8;
             let shares_required = rand.gen_range(2, 10);
             let shares_to_create = shares_required + rand.gen_range(0, 6);
-            let bit_size_co: usize = rand.gen_range(32, 65);
-            let prime_bits: usize = rand.gen_range(bit_size_co + 128, 257);
-            let mut prime: BigUint = rand.gen_prime(prime_bits);
-            while prime < BigUint::from(secret) {
-                prime = rand.gen_prime(prime_bits);
-            }
 
-            basic_single_value(secret, prime, bit_size_co, shares_to_create, shares_required);
+            basic_single_value(secret, prime, shares_to_create, shares_required);
         }
 
     }
 
 
-    fn basic_single_value(secret: u8, prime: BigUint, bit_size_co: usize, 
-                          shares_to_create: usize, shares_required: usize) {
+    fn basic_single_value(secret: u8, prime: i64, shares_to_create: usize, shares_required: usize) {
 
         /* Was used to find an infinite loop, no longer needed, but keeping for future reference
         unsafe {
@@ -331,20 +328,14 @@ mod tests {
         }
         */
         
-        assert!(num_bigint_dig::prime::probably_prime(&prime, 10));
-        let prime: BigInt = prime.into();
-
-
-
         let shares = create_shares_from_secret(
                 secret, 
-                &prime.clone().into(), 
+                prime, 
                 shares_required, 
-                shares_to_create, 
-                bit_size_co)
+                shares_to_create)
             .unwrap();
 
-        let secret_decrypted = reconstruct_secret(shares, &prime, shares_required).unwrap();
+        let secret_decrypted = reconstruct_secret(shares, prime, shares_required).unwrap();
         assert_eq!(secret, secret_decrypted);
 
     }
@@ -386,7 +377,6 @@ mod tests {
     fn large_data_and_benchmark() {
         use std::time::Instant;
 
-        let mut rand = SmallRng::seed_from_u64(123);
         let secret = 
             "According to all known laws of aviation, 
             there is no way a bee should be able to fly.
@@ -395,19 +385,16 @@ mod tests {
             because bees don't care what humans think is impossible.";
         let shares_required = 5;
         let shares_to_create = 5;
-        let co_max_bits = 64;
-        let prime: BigInt = rand.gen_prime(128).into();
-        
-        println!("Prime: {}", prime);
+        let prime = DEFAULT_PRIME;
 
     
         let now = Instant::now();
 
-        let share_lists = create_share_lists_from_secrets(secret.as_bytes(), &prime, 
-                          shares_required, shares_to_create, co_max_bits).unwrap();
+        let share_lists = create_share_lists_from_secrets(secret.as_bytes(), prime, 
+                          shares_required, shares_to_create).unwrap();
 
         let recon_secret_vec = reconstruct_secrets_from_share_lists(
-                share_lists, &prime, shares_required).unwrap();
+                share_lists, prime, shares_required).unwrap();
         let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
         
         let time_elap = now.elapsed().as_millis();
@@ -416,8 +403,6 @@ mod tests {
 
         assert_eq!(secret, &recon_secret[..])
 
-
-    
     }
 
     #[test]
@@ -430,12 +415,12 @@ mod tests {
         hasher.result(&mut hashed_pass);
 
         let mut rand = StdRng::seed_from_u64(123);
-        let prime: BigInt = rand.gen_prime(64).into();
-        let share_lists = create_share_lists_from_secrets(secret.as_bytes(), &prime,
-                        3, 3, 64).unwrap();
+        let prime: i64 = DEFAULT_PRIME;
+        let share_lists = create_share_lists_from_secrets(secret.as_bytes(), prime,
+                        3, 3).unwrap();
         let share_lists = shuffle_share_lists(share_lists, &hashed_pass, ShuffleOp::Shuffle);
         let share_lists = shuffle_share_lists(share_lists, &hashed_pass, ShuffleOp::ReverseShuffle);
-        let recon_secret_vec = reconstruct_secrets_from_share_lists(share_lists, &prime, 3).unwrap();
+        let recon_secret_vec = reconstruct_secrets_from_share_lists(share_lists, prime, 3).unwrap();
         let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
 
         assert_eq!(secret, recon_secret);

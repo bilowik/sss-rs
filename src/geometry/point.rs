@@ -1,15 +1,14 @@
-use num_bigint_dig::BigInt;
 use super::fraction::Fraction;
 use crate::{impl_binary_op, impl_binary_op_simple};
 use std::ops::{Add, Sub};
 
-#[allow(dead_code, unused_imports)]
+#[allow(dead_code)]
 
 
 
 /// A point structure that uses fractional values so that it can represent whole and non-whole
 /// numbers without the need for truncating.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct Point {
     x: Fraction,
     y: Fraction,
@@ -35,18 +34,18 @@ impl Point {
         self
     }
 
-    pub fn scale<T: Into<BigInt>>(mut self, scalar: T) -> Self {
+    pub fn scale(mut self, scalar: i64) -> Self {
         let scalar_frac = Fraction::new(scalar, 1);
-        self.x = self.x * &scalar_frac;
-        self.y = self.y * &scalar_frac;
+        self.x = self.x * scalar_frac;
+        self.y = self.y * scalar_frac;
         self
     }
 
-    pub fn x<'a>(&'a self) -> &'a Fraction {
-        &self.x
+    pub fn x(&self) -> Fraction {
+        self.x
     }
-    pub fn y<'a>(&'a self) -> &'a Fraction {
-        &self.y
+    pub fn y(&self) -> Fraction {
+        self.y
     }
 }
 
@@ -70,7 +69,7 @@ mod tests {
         let p1 = Point::new(4, 2);
         let p2 = Point::new(3, 7);
         let p3 = Point::new(-8, 4);
-        assert_eq!(p1 + &p2, Point::new(7, 9));
+        assert_eq!(p1 + p2, Point::new(7, 9));
         assert_eq!(p2 + p3, Point::new(-5, 11));
     }
 
@@ -79,7 +78,7 @@ mod tests {
         let p1 = Point::new(4, 2);
         let p2 = Point::new(3, 7);
         let p3 = Point::new(-8, 4);
-        assert_eq!(p1 - &p2, Point::new(1, -5));
+        assert_eq!(p1 - p2, Point::new(1, -5));
         assert_eq!(p2 - p3, Point::new(11, 3));
     }
 
@@ -88,7 +87,7 @@ mod tests {
         let p1 = Point::new(4, 2);
         let p3 = Point::new(-8, 4);
 
-        assert_eq!(p1.clone().scale(3), Point::new(12, 6));
+        assert_eq!(p1.scale(3), Point::new(12, 6));
         assert_eq!(p3.scale(5), Point::new(-40, 20));
         assert_eq!(p1.scale(-1), Point::new(-4, -2));
     }
