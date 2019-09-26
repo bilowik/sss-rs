@@ -10,10 +10,13 @@ use std::ops::Deref;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use std::convert::TryInto;
+use std::convert::TryFrom;
+use log::*;
 
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
-const READ_SEGMENT_SIZE: usize = 512_000; // 512 KB
+//const READ_SEGMENT_SIZE: usize = 512_000; // 512 KB
+const READ_SEGMENT_SIZE: usize = 16_384; // 32 KB
 
 
 
@@ -44,6 +47,20 @@ impl Sharer {
     /// destinations
     pub fn share(&self, mut dests: Vec<Box<dyn Write>>) 
         -> Result<(), Box<dyn Error>> {
+
+        // logging information
+        let l = log_enabled!(Level::Info);
+        let mut percent_finished: u64 = 0;
+        let mut total_bytes: u64 = 0;
+        let mut bytes_finished: u64 = 0;
+        if l {
+            println!("Beginning share operation...");
+            total_bytes = self.secret.len()?;
+            bytes_finished = 0;
+        }
+
+
+            
        
         // This converts a point list to its raw bytes of its y-values flattened into a single vec
         // This is here as a closure since its used at two different points in this function
@@ -74,17 +91,25 @@ impl Sharer {
         }
         
         for secret_segment in (&self.secret).into_iter() {
+            if l {
+                info!("{}%: {} of {} shared", percent_finished, bytes_finished, total_bytes);
+            }
+
 
             // Return error if seret_segment is an error, or unwrap it if its ok. This can happen
             // if the secret is a file and a reading error occured during iteration
             let secret_segment = secret_segment?; 
-
             let share_lists = create_share_lists_from_secrets(secret_segment.as_slice(),
                                                          *self.prime.deref(),
                                                          self.shares_required,
                                                          self.shares_to_create)?;
-            dbg!(&share_lists);
             share_lists_to_dests(share_lists, &mut dests)?;
+            std::mem::drop(secret_segment);
+            if l {
+                bytes_finished = bytes_finished + (READ_SEGMENT_SIZE as u64);
+                percent_finished = (bytes_finished * 100) / total_bytes;
+            }
+
                                                             
         }
 
@@ -464,7 +489,12 @@ impl Secret {
     /// $src_len MUST be an accurate length of the shares
     pub fn reconstruct_from_srcs(&mut self, mut srcs: Vec<Box<dyn Read>>, prime: Option<Box<dyn Read>>, 
                                  src_len: u64) -> Result<(), Box<dyn Error>> {
+        let src_len = u64::try_from((src_len as i64) - 512)?; 
+        // 512 is the hash len, which we don't want to include in the output secret, just to verify 
+        // that the secret was reconstructed properly. This should never underflow if valid shares
+        // are given.
        
+
         // Closure that converts bytes to i64 points
         let to_i64_points = |vec: Vec<u8>, segment_num: i64| -> Result<Vec<Point>, Box<dyn Error>> {
             vec.as_slice()
@@ -528,8 +558,7 @@ impl Secret {
 
         // We are now on the last segment which includes the hash at the end.
         // 
-        let hash_bytes = 512;
-        let remaining_secret_bytes: usize = (src_len - byte_counter - hash_bytes) as usize; 
+        let remaining_secret_bytes: usize = (src_len - byte_counter) as usize; 
         let mut segments: Vec<Vec<Point>> = Vec::with_capacity(srcs.len());
         let mut hash_segments: Vec<Vec<Point>> = Vec::with_capacity(srcs.len());
 
@@ -545,7 +574,6 @@ impl Secret {
         }
         // Reconstruct the pointes from the bytes in the shares
 
-        dbg!(&segments);
         
         dest.write_all(reconstruct_secrets_from_share_lists(segments, *prime, srcs.len())?.as_slice())?;
         let recon_hash = reconstruct_secrets_from_share_lists(hash_segments, *prime, srcs.len())?;
@@ -554,7 +582,7 @@ impl Secret {
         // calculate the hash
         std::mem::drop(dest);
         if !self.verify(recon_hash.as_slice())? {
-            let calc_hash_hex = hex::encode(&dbg!(self).calculate_hash()?);
+            let calc_hash_hex = hex::encode(self.calculate_hash()?);
             let orig_hash_hex = hex::encode(&recon_hash);
             return Err(Box::new(SharerError::VerificationFailure(orig_hash_hex, calc_hash_hex)));
         }
@@ -577,7 +605,7 @@ impl Secret {
         
        
         // Check that all the share files opened properly
-        let mut unwrapped_share_files: Vec<File> = Vec::with_capacity(share_files.len());
+        let mut unwrapped_share_files: Vec<File> = Vec::with_capacity(dbg!(share_files.len()));
         for file in share_files {
             unwrapped_share_files.push(file?);
         }
@@ -728,16 +756,14 @@ fn generate_prime_file_path(dir: &str, prime_file: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use std::time::Instant;
 
     #[test]
     fn large_file_test() {
+        //env_logger::builder().is_test(true).try_init().unwrap();
         
-        unsafe {
-            signal_hook::register(signal_hook::SIGQUIT, || println!("{:?}", backtrace::Backtrace::new()));
-        }
-
-
+        let start_sharing = Instant::now();
+        
         let dir = "./";
         let stem = "battle.exe";
         let num_shares = 2;
@@ -750,13 +776,26 @@ mod tests {
         sharer.share_to_files(dir, stem).unwrap();
         let mut recon = Secret::InFile(String::from("./battle_recon.exe"));
 
+        let elap_sharing = start_sharing.elapsed().as_millis();
+
+        let start_recon = Instant::now();
         recon.reconstruct_from_files(dir, stem, num_shares, PrimeLocation::Default).unwrap();
+        let elap_recon = start_recon.elapsed().as_millis();
+        println!(
+"Read Segment Size; {}
+ Sharing time elapsed: {}
+ Recon time elapsed: {}
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+ READ_SEGMENT_SIZE,
+ elap_sharing,
+ elap_recon);
     }
                                    
 
     
     #[test]
     fn basic_share_reconstruction() {
+
         let dir = "./";
         let stem = "basic_share_reconstruction_test";
         let num_shares = 2;
