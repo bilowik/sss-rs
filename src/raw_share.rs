@@ -7,7 +7,7 @@ use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaChaRng;
-
+//use log::*;
 
 pub const DEFAULT_PRIME: i64 = 1231;
 
@@ -27,7 +27,6 @@ pub const DEFAULT_PRIME: i64 = 1231;
 /// Return: This function will return Ok<Vec<Point>> upon success. 
 pub fn create_shares_from_secret(secret: u8, prime: i64, shares_required: usize, 
                         shares_to_create: usize) -> Result<Vec<Point>, Error> {
-
 
     let mut shares: Vec<Point> = Vec::new();
     let mut share_poly = Polynomial::new();
@@ -82,6 +81,7 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: i64,
     }
 }
 
+// TODO: The transpose isn't the issue, other issues exist. Move to u64 or u128 per secret
 
 /// This is a wrapper around @create_share_from_secret that loops through the @secret slice and
 /// returns a vector of vectors, with each vector being all the shares for a single byte of the
@@ -99,9 +99,10 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: i64, shares_require
         return Err(Error::EmptySecretArray)
     }
 
-    let mut list_of_share_lists: Vec<Vec<Point>> = Vec::new();
-
+    let mut list_of_share_lists: Vec<Vec<Point>> = Vec::with_capacity(secret.len());
+    let mut ctr = 0;
     for s in secret {
+        ctr = ctr + 1;
         match create_shares_from_secret(*s, 
                                            prime, 
                                            shares_required,
@@ -115,8 +116,8 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: i64, shares_require
             }
         }
     }
-
-    Ok(transpose_vec_matrix(&list_of_share_lists).unwrap())
+    let list_of_share_lists = transpose_vec_matrix(list_of_share_lists).unwrap();
+    Ok(list_of_share_lists)
 }
 
 
@@ -132,7 +133,7 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: i64, shares_require
 pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime: i64,
                                             shares_needed: usize) -> Result<Vec<u8>, Error> {
     let mut secrets: Vec<u8> = Vec::with_capacity(share_lists.len());
-    let share_lists = transpose_vec_matrix(&share_lists)?;
+    let share_lists = transpose_vec_matrix(share_lists)?;
     for point_list in share_lists {
         match reconstruct_secret(point_list, prime, shares_needed) {
             Ok(secret) => {
@@ -243,7 +244,7 @@ pub fn shuffle_share_lists<T: Clone>(share_lists: Vec<Vec<T>>, hashed_pass: &[u8
 
 /// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
 /// @matrix: The matrix to be transposed, must be a valid matrix else an error is returned.
-pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
+pub fn transpose_vec_matrix<T: Clone>(matrix: Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
 
     for i in 1..matrix.len() {
         if matrix[i - 1].len() != matrix[i].len() {
@@ -251,10 +252,14 @@ pub fn transpose_vec_matrix<T: Clone>(matrix: &Vec<Vec<T>>) -> Result<Vec<Vec<T>
         }
     }
 
-    let mut transpose: Vec<Vec<T>> = Vec::new();
+    let col_len = matrix.len();
+    let row_len = matrix[0].len();
+    
+
+    let mut transpose: Vec<Vec<T>> = Vec::with_capacity(col_len);
 
     for _ in 0..matrix[0].len() {
-        transpose.push(Vec::new());
+        transpose.push(Vec::with_capacity(row_len));
     }
 
     for i in 0..matrix.len() {
@@ -367,8 +372,8 @@ mod tests {
             vec![4, 8]
         ];
 
-        assert_eq!(transpose_vec_matrix(&matrix).unwrap(), matrix1);
-        assert_eq!(transpose_vec_matrix(&matrix2).unwrap(), matrix3);
+        assert_eq!(transpose_vec_matrix(matrix).unwrap(), matrix1);
+        assert_eq!(transpose_vec_matrix(matrix2).unwrap(), matrix3);
     }
 
 
