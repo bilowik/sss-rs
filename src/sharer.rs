@@ -17,47 +17,6 @@ const READ_SEGMENT_SIZE: usize = 512_000; // 512 KB
 
 
 
-/// Defines a prime as either THE default prime, or a NonDefault one either generated or given
-/// statically. If the default one is used it doesn't make sense to write it to a file
-#[derive(Debug, Clone)]
-enum Prime {
-    Default(i64),
-    NonDefault(i64),
-}
-
-/// Contains the secret, whether in file or in memory stored in Vec of bytes
-#[derive(Debug)]
-pub enum Secret {
-    InMemory(Vec<u8>),
-    InFile(String),
-}
-
-// Rust thinks it's dead code because a ptr is pulled from it and then it's set but never accessed,
-// but the ptr is used to reconstruct a slice that is used as the reader.
-#[allow(dead_code)]
-pub struct SecretIterator {
-    secret: Option<Vec<u8>>, // If the secret is InMemory, this will be some vector
-    reader: Box<dyn Read>, // reader is a reader of the vec in secret, or it's to an open file
-}
-
-/// Defines the location of the prime to the reconstruct_from_files, if it's the default prime, or if it was
-/// saved to a file. InFile doesn't have any data since the file should always be the stem appended
-/// with '.prime'
-#[derive(Debug, Clone)]
-pub enum PrimeLocation {
-    InFile, // The prime file is location in a file and is not the default 
-    Default, // The prime isn't in any file, the default prime was used.
-}
-
-impl Deref for Prime {
-    type Target = i64;
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Prime::Default(prime) => &prime,
-            Prime::NonDefault(prime) => &prime,
-        }
-    }
-}
 
 /// Creates shares from a given secret and reconstructs them back into the secret. 
 #[derive(Debug)]
@@ -67,20 +26,6 @@ pub struct Sharer {
     shares_required: usize,
     shares_to_create: usize,
 }
-
-/// The builder struct to give the Sharer struct  builder style construction. 
-/// Defaults:
-///     - prime: Prime::Default(<The default prime>)
-///     - shares_required: 3
-///     - shares_to_create: 3
-#[derive(Debug)]
-pub struct SharerBuilder {
-    secret: Secret, // The secret to be shared 
-    prime: Prime, // The prime number use to bring the underlying share polynomial into a finite field
-    shares_required: usize, // The number of shares needed to reconstruct the secret
-    shares_to_create: usize, // The number of shares to generate
-}
-
 
 
 impl Sharer {
@@ -239,6 +184,20 @@ impl Sharer {
 }
 
 
+/// The builder struct to give the Sharer struct  builder style construction. 
+/// Defaults:
+///     - prime: Prime::Default(<The default prime>)
+///     - shares_required: 3
+///     - shares_to_create: 3
+#[derive(Debug)]
+pub struct SharerBuilder {
+    secret: Secret, // The secret to be shared 
+    prime: Prime, // The prime number use to bring the underlying share polynomial into a finite field
+    shares_required: usize, // The number of shares needed to reconstruct the secret
+    shares_to_create: usize, // The number of shares to generate
+}
+
+
 impl SharerBuilder {
     
     /// Builds the Sharer and constructs the shares.
@@ -335,6 +294,15 @@ impl Default for SharerBuilder {
 }
 
 
+// Rust thinks it's dead code because a ptr is pulled from it and then it's set but never accessed,
+// but the ptr is used to reconstruct a slice that is used as the reader.
+#[allow(dead_code)]
+pub struct SecretIterator {
+    secret: Option<Vec<u8>>, // If the secret is InMemory, this will be some vector
+    reader: Box<dyn Read>, // reader is a reader of the vec in secret, or it's to an open file
+}
+
+
 impl std::iter::IntoIterator for &Secret {
     type Item = Result<Vec<u8>, Box<dyn Error>>;
     type IntoIter = SecretIterator;
@@ -382,6 +350,12 @@ impl std::iter::Iterator for SecretIterator {
 
 }
 
+/// Contains the secret, whether in file or in memory stored in Vec of bytes
+#[derive(Debug)]
+pub enum Secret {
+    InMemory(Vec<u8>),
+    InFile(String),
+}
 
 impl Secret {
 
@@ -586,6 +560,36 @@ impl Secret {
 
 }
 
+
+
+/// Defines a prime as either THE default prime, or a NonDefault one either generated or given
+/// statically. If the default one is used it doesn't make sense to write it to a file
+#[derive(Debug, Clone)]
+enum Prime {
+    Default(i64),
+    NonDefault(i64),
+}
+
+
+
+/// Defines the location of the prime to the reconstruct_from_files, if it's the default prime, or if it was
+/// saved to a file. InFile doesn't have any data since the file should always be the stem appended
+/// with '.prime'
+#[derive(Debug, Clone)]
+pub enum PrimeLocation {
+    InFile, // The prime file is location in a file and is not the default 
+    Default, // The prime isn't in any file, the default prime was used.
+}
+
+impl Deref for Prime {
+    type Target = i64;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Prime::Default(prime) => &prime,
+            Prime::NonDefault(prime) => &prime,
+        }
+    }
+}
         
 
 
@@ -720,6 +724,8 @@ mod tests {
                 panic!("Secrets are not both in memory?");
             }
         }
+
+
 
     }
 
