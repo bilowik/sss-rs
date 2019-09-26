@@ -18,13 +18,14 @@ const READ_SEGMENT_SIZE: usize = 512_000; // 512 KB
 
 
 
-/// Creates shares from a given secret and reconstructs them back into the secret. 
+/// Creates shares from a given secret. Shares to any suitable destination that implements Write
+/// and has conveinence functions for files. To instantiate, the builder should be used.
 #[derive(Debug)]
 pub struct Sharer {
-    secret: Secret,
-    prime: Prime,
-    shares_required: usize,
-    shares_to_create: usize,
+    secret: Secret, // The source of the secret, either an in memory vec or a file path
+    prime: Prime, // The prime used for the secret sharing finite field arithmetic
+    shares_required: usize, // The number of shares required to reconstruct the secret
+    shares_to_create: usize, // The number of shares to create
 }
 
 
@@ -108,11 +109,17 @@ impl Sharer {
 
 
 
-    /// Shares all the shares to separate files for distribution. 
-    /// @stem: Defines the stem of the output files, they will be @stem.s0, @stem.s1, and so on..
-    /// @dir: The directory to output the shares to.
+    /// Shares all the shares to separate files for distribution. This also outputs the prime to a
+    /// file as well if it isn't the default. This is a wrapper for the $share function.
     ///
-    /// If @dir isn't valid, the LAST invalid destination file's error is returned. 
+    /// Format:
+    ///     $dir/$stem.s<share_number>  For the shares
+    ///     $dir/$stem.prime            For the prime, if it isn't the default. 
+    ///
+    /// $stem: Defines the stem of the output files, they will be $stem.s0, $stem.s1, and so on..
+    /// $dir: The directory to output the shares to.
+    ///
+    /// If $dir isn't valid, the LAST invalid destination file's error is returned. 
     pub fn share_to_files(&self, dir: &str, stem: &str) -> Result<(), Box<dyn Error>> {
         let file_paths = generate_share_file_paths(dir, stem, self.shares_to_create);
 
@@ -135,8 +142,8 @@ impl Sharer {
     }
 
 
-    /// Tests the reconstruction of the shares as outputted via the @share_to_files function.
-    /// @dir: The directory to output the temporary shares. Default is the current dir
+    /// Tests the reconstruction of the shares as outputted via the $share_to_files function.
+    /// $dir: The directory to output the temporary shares. Default is the current dir
     pub fn test_reconstruction_file(&self, dir: Option<&str>) -> Result<(), Box<dyn Error>> {
         let default_dir = "./";
         let dir = match dir {
@@ -166,16 +173,8 @@ impl Sharer {
 
     }
 
-    pub fn get_hash_hex(&self) -> Result<String, Box<dyn Error>> {
-        Ok(hex::encode(self.secret.calculate_hash()?))
-    }
 
-
-
-            
-
-
-
+    /// Gets an immutable reference to the secret
     pub fn get_secret<'a>(&'a self) -> &'a Secret {
         &self.secret
     }
@@ -200,7 +199,7 @@ pub struct SharerBuilder {
 
 impl SharerBuilder {
     
-    /// Builds the Sharer and constructs the shares.
+    /// Builds and returns the Sharer struct
     pub fn build(self) -> Result<Sharer, Box<dyn Error>> {
 
         if self.secret.len()? == 0 {
@@ -225,13 +224,25 @@ impl SharerBuilder {
     /// Use a specific prime for the generation of the shares. The given prime is checked with an
     /// astronomically low chance for being incorrect. It's recommended to use the default prime or
     /// randomly generate one with rand_prime
-    pub fn prime(mut self, prime: i64) -> Result<Self, SharerError> {
+    pub fn prime(mut self, prime: i64) -> Result<Self, (SharerError, Self)> {
         if primal_check::miller_rabin(prime as u64) {
             self.prime = Prime::NonDefault(prime);
             Ok(self)
         }
         else {
-            Err(SharerError::NotPrime(prime))
+            Err((SharerError::NotPrime(prime), self))
+        }
+    }
+
+
+    /// Use a specific prime, or if it isn't prime, fallback to the default prime
+    pub fn prime_or_default(self, prime: i64) -> Self {
+        match self.prime(prime) {
+            Ok(builder) => builder,
+            Err((_, mut builder)) => {
+                builder.prime = Prime::Default(DEFAULT_PRIME);
+                builder
+            }
         }
     }
 
@@ -247,6 +258,7 @@ impl SharerBuilder {
         self
     }
 
+    // Used to generate random primes
     fn gen_random_prime<T: Rng>(rng: &mut T) -> i64 {
         let mut maybe_prime: i64 = rng.gen_range(std::i16::MAX as i32, std::i32::MAX as i32) as i64;
         maybe_prime = maybe_prime | 1; // Ensure the number is odd
@@ -260,6 +272,9 @@ impl SharerBuilder {
 
 
 
+    /// Sets the number of shares required for secret reconstruction
+    /// Default: 3
+    /// Must be >= 2, else $build() will fail
     pub fn shares_required(mut self, shares_required: usize) -> Self {
         self.shares_required = shares_required;
         if self.shares_required < self.shares_to_create {
@@ -268,6 +283,9 @@ impl SharerBuilder {
         self
     }
 
+    /// Sets the number of shares to create.
+    /// Default: 3
+    /// Must be >= 2 AND  >= $shares_required, else $build() will fail
     pub fn shares_to_create(mut self, shares_to_create: usize) -> Self {
         self.shares_to_create = shares_to_create;
         if self.shares_to_create < self.shares_required {
@@ -294,10 +312,15 @@ impl Default for SharerBuilder {
 }
 
 
-// Rust thinks it's dead code because a ptr is pulled from it and then it's set but never accessed,
-// but the ptr is used to reconstruct a slice that is used as the reader.
-#[allow(dead_code)]
+/// Iterator that iterates over a given Secret, returning smaller segments of it at a time. Returns
+/// Option<Result<Vec<u8>, Box<dyn Error>>> because file reads may fail, and in that case
+/// Some(Err(_)) is returned. Iteration can continue, but the behavior is undefined as it may be
+/// able to continue reading or may not depending on the initial error. See std::io::Error for
+/// possible errors.
 pub struct SecretIterator {
+    // Rust thinks it's dead code because a ptr is pulled from it and then it's set but never accessed,
+    // but the ptr is used to reconstruct a slice that is used as the reader.
+    #[allow(dead_code)]
     secret: Option<Vec<u8>>, // If the secret is InMemory, this will be some vector
     reader: Box<dyn Read>, // reader is a reader of the vec in secret, or it's to an open file
 }
@@ -350,25 +373,37 @@ impl std::iter::Iterator for SecretIterator {
 
 }
 
-/// Contains the secret, whether in file or in memory stored in Vec of bytes
+/// Contains the secret, whether in file or in memory stored in a Vec of bytes. This can be used
+/// for both sharing and reconstructing. When reconstructing, you can set it to reconstruct into
+/// a Vec by setting it to InMemory, or you can set it to output to a file. 
+/// For sharing, you can input a secret to be shared, either a file or a vec of bytes. 
 #[derive(Debug)]
 pub enum Secret {
     InMemory(Vec<u8>),
     InFile(String),
+    //Other(Box<dyn Read>), to be implemented soon
 }
 
 impl Secret {
 
+    /// Constructs an empty vec for the secret. 
     pub fn empty_in_memory() -> Self {
         Secret::InMemory(Vec::new())
     }
+    
+    /// Constructs an empty vec for the secret but allocates an intial capacity.
     pub fn empty_in_memory_with_capacity(capacity: usize) -> Self {
         Secret::InMemory(Vec::with_capacity(capacity))
     }
+
+    /// Points the secret to a file. This file can either be a source for the secret, or an output
+    /// file for reconstructing a secret
     pub fn point_at_file(path: &str) -> Self {
         Secret::InFile(String::from(path))
     }
 
+    /// Attempts to get the length of the Secret. This can fail if the secret is a file path that
+    /// doesn't exist.
     pub fn len(&self) -> Result<u64, Box<dyn Error>> {
         match self {
             Secret::InFile(ref path) => Ok(std::fs::metadata(path)?.len()),
@@ -376,6 +411,12 @@ impl Secret {
         }
     }
 
+
+    /// Calculates and returns the Sha3-512 hash of the first 64 bytes of the secret. 
+    /// This is mainly used for verifying secret reconstruction, where the chances of incorrect
+    /// reconstruction resulting in the first 64 bytes being correct is extremely low. 
+    ///
+    /// If $secret.len() is less than 64 bytes, then only $secret.len() number of bytes is used.
     pub fn calculate_hash(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut hasher_output = [0u8; 64];
         let mut hasher = Sha3::sha3_512();
@@ -404,6 +445,12 @@ impl Secret {
 
     }
 
+    /// Calculcates and returns the hash of the first 64 bytes of the share in a string with
+    /// hexidecimal digits. 
+    pub fn get_hash_hex(&self) -> Result<String, Box<dyn Error>> {
+        Ok(hex::encode(self.calculate_hash()?))
+    }
+
     /// Calculates a hash and compares it to the given hash. Returns Ok(true) if they're
     /// equivalent, Ok(false) if they aren't or an error if there was an issue calculating the hash
     /// (likely a read error if Secret was a file)
@@ -414,7 +461,7 @@ impl Secret {
 
     /// Reconstructs a secret from a given list of srcs. The srcs should all read the same number
     /// of bytes. 
-    /// @src_len MUST be an accurate length of the shares read in from the srcs
+    /// $src_len MUST be an accurate length of the shares
     pub fn reconstruct_from_srcs(&mut self, mut srcs: Vec<Box<dyn Read>>, prime: Option<Box<dyn Read>>, 
                                  src_len: u64) -> Result<(), Box<dyn Error>> {
        
@@ -468,7 +515,6 @@ impl Secret {
 
                 segments.push(conv_to_points);
                 segment_ctr = segment_ctr + 1; // Keeps track of the x_values for each segment                  
-
             }
 
             // Now segments has a segment from each share src, reconstruct the secret up to that
@@ -647,7 +693,7 @@ impl Error for SharerError {}
 
 
 
-
+// Auxiliary methods;
 
 
 // Generates paths for the shares with in given dir with a given stem. 
@@ -678,10 +724,36 @@ fn generate_prime_file_path(dir: &str, prime_file: &str) -> String {
 
 
 
-
+// TODO: Still having big memory issues and slow perforamnce as well.
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[test]
+    fn large_file_test() {
+        
+        unsafe {
+            signal_hook::register(signal_hook::SIGQUIT, || println!("{:?}", backtrace::Backtrace::new()));
+        }
+
+
+        let dir = "./";
+        let stem = "battle.exe";
+        let num_shares = 2;
+        let secret = Secret::InFile(String::from("./battle.exe"));
+        let sharer = Sharer::builder(secret)
+                            .shares_required(num_shares)
+                            .shares_to_create(num_shares)
+                            .build()
+                            .unwrap();
+        sharer.share_to_files(dir, stem).unwrap();
+        let mut recon = Secret::InFile(String::from("./battle_recon.exe"));
+
+        recon.reconstruct_from_files(dir, stem, num_shares, PrimeLocation::Default).unwrap();
+    }
+                                   
+
     
     #[test]
     fn basic_share_reconstruction() {
