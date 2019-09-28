@@ -7,9 +7,37 @@ use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaChaRng;
+use lazy_static::lazy_static;
 //use log::*;
 
-pub const DEFAULT_PRIME: i64 = 1231;
+
+lazy_static! {
+    pub static ref DEFAULT_PRIME: i64 = (2i64).pow(61) - 1;
+    pub static ref CO_MIN: u16 = 1;
+    pub static ref CO_MAX: u16 = (2u16).pow(11);
+}
+
+// NOTE TODO DELETE ME
+struct PointVec(Vec<Point>);
+impl std::fmt::Display for PointVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let mut initial_string = String::new();
+        for p in &self.0 {
+            initial_string.push_str(&p.to_string());
+            initial_string.push_str(" ");
+        }
+        write!(f, "{}", initial_string)
+    }
+}
+use std::ops::Deref;
+impl Deref for PointVec {
+    type Target = Vec<Point>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+        }
+}
+
 
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data. 
@@ -33,23 +61,22 @@ pub fn create_shares_from_secret(secret: u8, prime: i64, shares_required: usize,
     
     let mut rand = StdRng::from_entropy();
 
-    share_poly.set_term(Term::new(secret, 0));
+    share_poly.set_term(Term::new(secret as i64, 0));
 
     for i in 1usize..shares_required {
-        let curr_co: i16 = rand.gen();
+        let curr_co: u16 = rand.gen_range(*CO_MIN, *CO_MAX);
         // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
         // values
         
         share_poly.set_term(Term::new(curr_co as i64, i));
     }
-
+    
 
     for i in 1..=shares_to_create {
         let curr_x = Fraction::new(i as i64, 1);
         let curr_y: Fraction = share_poly.get_y_value(curr_x) % prime;
         shares.push(Point::new(curr_x, curr_y));
     }
-
 
 
 
@@ -72,11 +99,18 @@ pub fn reconstruct_secret(shares: Vec<Point>, prime: i64,
                           shares_needed: usize) -> Result<u8, Error> {
     match Polynomial::from_points(&shares, shares_needed - 1) {
         Ok(poly) => {
-            Ok(poly.get_term(0)
-                        .get_co()
-                        .rem(prime)
-                        .get_numerator() as u8)
-        }
+            let secret = poly.get_term(0)
+                            .get_co()
+                            .get_numerator()
+                            .rem(prime);
+            if secret.abs() < 256 {
+                Ok(secret as u8)
+            }
+            else {
+                Ok((256 - secret.abs()).abs() as u8)
+            }
+
+        },
         Err(_) => Err(Error::NotEnoughShares { given: shares.len(), required: shares_needed }),
     }
 }
@@ -96,13 +130,11 @@ pub fn create_share_lists_from_secrets(secret: &[u8], prime: i64, shares_require
                                    shares_to_create: usize
                                    ) -> Result<Vec<Vec<Point>>, Error> {
     if secret.len() == 0 {
-        return Err(Error::EmptySecretArray)
+        return Err(Error::EmptySecretArray);
     }
 
     let mut list_of_share_lists: Vec<Vec<Point>> = Vec::with_capacity(secret.len());
-    let mut ctr = 0;
     for s in secret {
-        ctr = ctr + 1;
         match create_shares_from_secret(*s, 
                                            prime, 
                                            shares_required,
@@ -146,6 +178,104 @@ pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime:
     }
     Ok(secrets)
 }
+
+
+   //TODO: Add initial capacities for vecs 
+pub fn create_shares_from_secret_u32(secret: u32, prime: i64, shares_required: usize, 
+                        shares_to_create: usize) -> Result<Vec<Point>, Error> {
+
+    let mut shares: Vec<Point> = Vec::new();
+    let mut share_poly = Polynomial::new();
+    
+    let mut rand = StdRng::from_entropy();
+
+    share_poly.set_term(Term::new(secret, 0));
+
+    for i in 1usize..shares_required {
+        let curr_co: u16 = rand.gen_range(*CO_MIN, *CO_MAX);
+        // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
+        // values
+        
+        share_poly.set_term(Term::new(curr_co as i64, i));
+    }
+
+
+    for i in 1..=shares_to_create {
+        let curr_x = Fraction::new(i as i64, 1);
+        let curr_y: Fraction = share_poly.get_y_value(curr_x) % prime;
+        shares.push(Point::new(curr_x, curr_y));
+    }
+
+    Ok(shares)
+}
+
+
+pub fn reconstruct_secret_u32(shares: Vec<Point>, prime: i64, 
+                          shares_needed: usize) -> Result<u32, Error> {
+    match Polynomial::from_points(&shares, shares_needed - 1) {
+        Ok(poly) => {
+            Ok(poly.get_term(0)
+                        .get_co()
+                        .rem(prime)
+                        .get_numerator() as u32)
+        }
+        Err(_) => Err(Error::NotEnoughShares { given: shares.len(), required: shares_needed }),
+    }
+}
+
+/// Performs secret sharing but with i64 values as the inputted secrets. Improved performance vs
+/// individual byte sharing, which should only be used on excess data that doesn't perfectly fit
+/// into 8-bytes.
+pub fn create_share_lists_from_secrets_u32(secret: &[u32], prime: i64, shares_required: usize, 
+                                        shares_to_create: usize) -> Result<Vec<Vec<Point>>, Error> {
+    if secret.len() == 0 {
+        return Err(Error::EmptySecretArray);
+    }
+
+    let mut list_of_share_lists: Vec<Vec<Point>> = Vec::with_capacity(secret.len());
+    for s in secret {
+        match create_shares_from_secret_u32(*s,
+                                            prime,
+                                            shares_required,
+                                            shares_to_create) {
+            Ok(shares) => {
+                list_of_share_lists.push(shares);
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+
+    let list_of_share_lists = transpose_vec_matrix(list_of_share_lists).unwrap();
+    Ok(list_of_share_lists)
+}
+
+
+pub fn reconstruct_secrets_from_share_lists_u32(share_lists: Vec<Vec<Point>>, prime: i64,
+                                            shares_needed: usize) -> Result<Vec<u32>, Error> {
+    let mut secrets: Vec<u32> = Vec::with_capacity(share_lists.len());
+    let share_lists = transpose_vec_matrix(share_lists)?;
+    for point_list in share_lists {
+        match reconstruct_secret_u32(point_list, prime, shares_needed) {
+            Ok(secret) => {
+                secrets.push(secret);
+            },
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+    Ok(secrets)
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -310,7 +440,7 @@ mod tests {
     fn many_test() {
 
         let num_iters = 10;
-        let prime = DEFAULT_PRIME;
+        let prime = *DEFAULT_PRIME;
 
         let mut rand = SmallRng::seed_from_u64(123u64);
 
@@ -390,7 +520,7 @@ mod tests {
             because bees don't care what humans think is impossible.";
         let shares_required = 5;
         let shares_to_create = 5;
-        let prime = DEFAULT_PRIME;
+        let prime = *DEFAULT_PRIME;
 
     
         let now = Instant::now();
@@ -419,7 +549,7 @@ mod tests {
         hasher.input(pass.as_bytes());
         hasher.result(&mut hashed_pass);
 
-        let prime: i64 = DEFAULT_PRIME;
+        let prime: i64 = *DEFAULT_PRIME;
         let share_lists = create_share_lists_from_secrets(secret.as_bytes(), prime,
                         3, 3).unwrap();
         let share_lists = shuffle_share_lists(share_lists, &hashed_pass, ShuffleOp::Shuffle);
