@@ -509,7 +509,7 @@ mod tests {
     }
 
 
-    
+    #[cfg(feature = "benchmark_tests")]    
     #[test]
     fn large_data_and_benchmark() {
         use std::time::Instant;
