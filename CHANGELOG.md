@@ -1,3 +1,17 @@
+## sss-rs 0.4.0 09/29/2019
+ - Segmented reading/processing of secrets and shares
+	- For all secrets/shares, they are read in chunks of 8KB, which had shown to give the best 
+	 performance
+ 	- This greatly reduces the memory footprint and is a general perforamnce improvement
+ - 4-byte secret processing
+ 	- Secrets are now processed in chunks of 4-bytes vs 1-byte, which gave major perforamnce 
+	  improvements.
+	- For secrets with length not divisible by 4, are processed in single bytes, no padding!
+ - Temporarily disabled finite field arithmetic via primes
+ 	- Note: My knowledge of how finite field arithmetic worked seemed to be off, and was never 
+	working as intended, so has been disabled until I can properly implement it back in. The API
+	remains the same however, it accepts primes but does nothing with them.
+
 ## sss-rs 0.3.1 09/22/2019
  - Tests were making use of the same dir and stem, and since Rust unit tests are run in multiple threads by default, this caused occasional test failures when the two tests happened to be running at the same time. The test files are now named based on the name of the test to prevent this issue again
 
