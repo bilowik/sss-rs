@@ -20,9 +20,8 @@ let stem = "test";
 let num_shares = 3;
 let secret: Vec<u8> = vec![5, 4, 9, 1, 2, 128, 43];
 let sharer = Sharer::builder(secret)
-	.shares_required(num_shares)
-	.shares_to_create(num_shares)
-	.coefficient_bits(32)
+	.shares_required(num_shares) // Default is 3 if not explicitly set
+	.shares_to_create(num_shares)// Default is 3 if not explicitly set
 	.build()
 	.unwrap();
 sharer.share_to_files(dir, stem).unwrap();
