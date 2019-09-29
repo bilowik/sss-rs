@@ -2,40 +2,19 @@ use crate::geometry::*;
 use rand::Rng;
 use rand::rngs::StdRng;
 use rand::{SeedableRng, FromEntropy};
-use std::ops::Rem;
+//use std::ops::Rem;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaChaRng;
 use lazy_static::lazy_static;
-//use log::*;
 
 
 lazy_static! {
-    pub static ref DEFAULT_PRIME: i64 = (2i64).pow(61) - 1;
-    pub static ref CO_MIN: u16 = 1;
-    pub static ref CO_MAX: u16 = (2u16).pow(11);
-}
-
-// NOTE TODO DELETE ME
-struct PointVec(Vec<Point>);
-impl std::fmt::Display for PointVec {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let mut initial_string = String::new();
-        for p in &self.0 {
-            initial_string.push_str(&p.to_string());
-            initial_string.push_str(" ");
-        }
-        write!(f, "{}", initial_string)
-    }
-}
-use std::ops::Deref;
-impl Deref for PointVec {
-    type Target = Vec<Point>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-        }
+    //pub static ref DEFAULT_PRIME: i64 = (2i64).pow(61) - 1; choosing a smaller prime
+    pub static ref DEFAULT_PRIME: i64 = 5000000029;
+    pub static ref CO_MIN: u32 = (2u32).pow(2);
+    pub static ref CO_MAX: u32 = (2u32).pow(14); //2048
 }
 
 
@@ -53,7 +32,7 @@ impl Deref for PointVec {
 ///     hide the secret. If @co_max_bits == 0, this function will panic.
 ///
 /// Return: This function will return Ok<Vec<Point>> upon success. 
-pub fn create_shares_from_secret(secret: u8, prime: i64, shares_required: usize, 
+pub fn create_shares_from_secret(secret: u8, _prime: i64, shares_required: usize, 
                         shares_to_create: usize) -> Result<Vec<Point>, Error> {
 
     let mut shares: Vec<Point> = Vec::new();
@@ -64,7 +43,7 @@ pub fn create_shares_from_secret(secret: u8, prime: i64, shares_required: usize,
     share_poly.set_term(Term::new(secret as i64, 0));
 
     for i in 1usize..shares_required {
-        let curr_co: u16 = rand.gen_range(*CO_MIN, *CO_MAX);
+        let curr_co: u32 = rand.gen_range(*CO_MIN, *CO_MAX);
         // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
         // values
         
@@ -74,7 +53,7 @@ pub fn create_shares_from_secret(secret: u8, prime: i64, shares_required: usize,
 
     for i in 1..=shares_to_create {
         let curr_x = Fraction::new(i as i64, 1);
-        let curr_y: Fraction = share_poly.get_y_value(curr_x) % prime;
+        let curr_y: Fraction = share_poly.get_y_value(curr_x);
         shares.push(Point::new(curr_x, curr_y));
     }
 
@@ -95,20 +74,28 @@ pub fn create_shares_from_secret(secret: u8, prime: i64, shares_required: usize,
 ///     efficieny.
 ///
 /// This will return an error if @shares.len() < shares_needed.
-pub fn reconstruct_secret(shares: Vec<Point>, prime: i64, 
+pub fn reconstruct_secret(shares: Vec<Point>, _prime: i64, 
                           shares_needed: usize) -> Result<u8, Error> {
     match Polynomial::from_points(&shares, shares_needed - 1) {
         Ok(poly) => {
+            Ok(poly.get_term(0).get_co().get_numerator() as u8)
+            /*
             let secret = poly.get_term(0)
                             .get_co()
                             .get_numerator()
                             .rem(prime);
+            // NaturalMod was used here, but when the secret is 0, would sometimes come out to be
+            // 255, but isn't the case when the below is used instead. Why does it work? I honestly
+            // don't know. I just noticed that the normal Rem function either was correct or 
+            // left it exactly S off from 256, where S is the secret. The expression below takes
+            // care of that.
             if secret.abs() < 256 {
                 Ok(secret as u8)
             }
             else {
                 Ok((256 - secret.abs()).abs() as u8)
             }
+            */
 
         },
         Err(_) => Err(Error::NotEnoughShares { given: shares.len(), required: shares_needed }),
@@ -181,7 +168,7 @@ pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime:
 
 
    //TODO: Add initial capacities for vecs 
-pub fn create_shares_from_secret_u32(secret: u32, prime: i64, shares_required: usize, 
+pub fn create_shares_from_secret_u32(secret: u32, _prime: i64, shares_required: usize, 
                         shares_to_create: usize) -> Result<Vec<Point>, Error> {
 
     let mut shares: Vec<Point> = Vec::new();
@@ -192,7 +179,7 @@ pub fn create_shares_from_secret_u32(secret: u32, prime: i64, shares_required: u
     share_poly.set_term(Term::new(secret, 0));
 
     for i in 1usize..shares_required {
-        let curr_co: u16 = rand.gen_range(*CO_MIN, *CO_MAX);
+        let curr_co: u32 = rand.gen_range(*CO_MIN, *CO_MAX);
         // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
         // values
         
@@ -202,7 +189,9 @@ pub fn create_shares_from_secret_u32(secret: u32, prime: i64, shares_required: u
 
     for i in 1..=shares_to_create {
         let curr_x = Fraction::new(i as i64, 1);
-        let curr_y: Fraction = share_poly.get_y_value(curr_x) % prime;
+        let curr_y: Fraction = share_poly.get_y_value(curr_x);
+        
+        
         shares.push(Point::new(curr_x, curr_y));
     }
 
@@ -210,15 +199,28 @@ pub fn create_shares_from_secret_u32(secret: u32, prime: i64, shares_required: u
 }
 
 
-pub fn reconstruct_secret_u32(shares: Vec<Point>, prime: i64, 
+pub fn reconstruct_secret_u32(shares: Vec<Point>, _prime: i64, 
                           shares_needed: usize) -> Result<u32, Error> {
     match Polynomial::from_points(&shares, shares_needed - 1) {
         Ok(poly) => {
+            
             Ok(poly.get_term(0)
                         .get_co()
-                        .rem(prime)
                         .get_numerator() as u32)
-        }
+                        
+            /*
+            let secret = poly.get_term(0)
+                            .get_co()
+                            .get_numerator()
+                            .rem(prime);
+            if secret.abs() < (std::u32::MAX as i64) + 1 {
+                Ok(secret as u32)
+            }
+            else {
+                Ok(((std::u32::MAX as i64 + 1) - secret.abs()).abs() as u32)
+            }
+            */
+        },
         Err(_) => Err(Error::NotEnoughShares { given: shares.len(), required: shares_needed }),
     }
 }
