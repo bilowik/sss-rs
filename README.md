@@ -2,22 +2,16 @@
 [![Build Status](https://travis-ci.com/bilowik/sss-rs.svg?branch=master)](https://travis-ci.com/bilowik/sss-rs)
 
 An implementation of a secret sharing scheme in Rust. 
+This is not meant to be a serious/optimized implementation, it's more of a fun project to further
+my Rust knowledge.
 
 # Some things to note:
-	- Depending on the configuration you decide, the shares may not be the same size as the secret,
-	  but this is okay. 
-
-	- Currently has a relatively high memory footprint when working with large secrets. This is planned
-	  to be fixed in 0.3.2/0.4.0
-
-		- To continue giving the raw_share API as much flexibility as possible, this will likely be 
-		  implemented for the Sharer API only to give devs the choice in how they want to handle memory
-		  usage when using the raw_share API.
-
-	- Works on single bytes of data. In the future this may change to allow working on N bytes of data at
-	  a time to improve performance.
-
-Not intended to be used in production code.
+ - Not intended to be used in production code.
+ - Finite field modular arithmetic has been temporarily disabled, the API still accepts primes but
+ 	they do not currently affect anything
+ - While the example only showcases File's as input, but a more general method is available that 
+   accepts any Readable sources, as well as Writeable dest for sharing.
+   	- Note: Generic Writeble secret destination for reconstruction is planned for 0.5.0
 
 # New Example with the current API
 ```
