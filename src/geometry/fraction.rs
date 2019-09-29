@@ -323,6 +323,14 @@ impl Neg for &Fraction {
     }
 }
 
+use crate::utils::NaturalMod;
+impl NaturalMod<i64> for Fraction {
+    type Output_ = Fraction;
+    fn natural_mod(self, rhs: i64) -> Fraction {
+        (self % rhs + rhs) % rhs
+    }
+}
+
 
 
 impl<T: Into<i64> + std::fmt::Debug> From<T> for Fraction {
