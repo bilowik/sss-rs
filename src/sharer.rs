@@ -823,6 +823,7 @@ mod tests {
     use super::*;
     use std::time::Instant;
 
+    #[cfg(feature = "file_tests")]
     #[test]
     fn large_file_test() {
         env_logger::builder().is_test(true).try_init().unwrap();
@@ -830,16 +831,16 @@ mod tests {
         let start_sharing = Instant::now();
         
         let dir = "./";
-        let stem = "battle.exe";
+        let stem = "test.txt";
         let num_shares = 2;
-        let secret = Secret::InFile(String::from("./battle.exe"));
+        let secret = Secret::InFile(String::from("./test.txt"));
         let sharer = Sharer::builder(secret)
                             .shares_required(num_shares)
                             .shares_to_create(num_shares)
                             .build()
                             .unwrap();
         sharer.share_to_files(dir, stem).unwrap();
-        let mut recon = Secret::InFile(String::from("./battle.exe.recon"));
+        let mut recon = Secret::InFile(String::from("./test.txt.recon"));
 
         let elap_sharing = start_sharing.elapsed().as_millis();
 
@@ -889,7 +890,7 @@ mod tests {
 
         match (sharer.get_secret(), &recon) {
             (Secret::InMemory(orig_secret), Secret::InMemory(recon_secret)) => {
-                println!("Pass: {}", orig_secret == recon_secret);
+                assert_eq!(orig_secret, recon_secret);
             }
             _ => {
                 panic!("Secrets are not both in memory?");
@@ -935,6 +936,7 @@ mod tests {
 
 
 
+    #[cfg(feature = "benchmark_tests")]
     #[test]
     fn stress_test_sharer() {
         /*
