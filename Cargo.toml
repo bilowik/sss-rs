@@ -28,3 +28,5 @@ log = "0.4.8"
 
 [features]
 default = []
+file_tests = []
+benchmark_tests = []
