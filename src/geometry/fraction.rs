@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use std::ops::{Add, Sub, Mul, Div, Neg, Rem};
 use std::convert::{TryFrom, From};
 use crate::{impl_binary_op_simple, impl_binary_op};
-
+use num_traits::Pow;
 /*
  * The Fraction struct is mainly used as the coefficients in the polynomial struct
  */
@@ -246,16 +246,6 @@ impl Fraction {
     }
 
 
-    /// Consuming exponential operation, raising the fraction to the given power.
-    pub fn pow(mut self, pow: u32) -> Self {
-        self.denominator = self.denominator.pow(pow);
-        self.numerator = self.numerator.pow(pow);
-        self.reduce()
-    }
-
-
-
-
 } // End impl Fraction
 
 
@@ -361,11 +351,49 @@ impl TryFrom<Fraction> for i64 {
     }
 }
 
+impl Pow<i32> for Fraction {
+    type Output = Fraction;
+
+    fn pow(self, rhs: i32) -> Fraction {
+        let abs_rhs: u32 = rhs.abs() as u32;
+        let mut lhs = if rhs < 0 {
+            self.flip()
+        }
+        else {
+            self
+        };
+        lhs.numerator = lhs.numerator.pow(abs_rhs);
+        lhs.denominator = lhs.denominator.pow(abs_rhs);
+        lhs.reduce()
+    }
+}
+
+impl Pow<u32> for Fraction {
+    type Output = Fraction;
+
+    fn pow(mut self, pow: u32) -> Self {
+        self.denominator = self.denominator.pow(pow);
+        self.numerator = self.numerator.pow(pow);
+        self.reduce()
+    }
+}
+            
+
+pub fn i64_pow_i32(lhs: i64, rhs: i32) -> Fraction {
+        Fraction::new(lhs, 1).pow(rhs).reduce()
+}
+
+
+
+
+
+
 
 // Unit Tests
 #[cfg(test)]
 mod tests {
     use super::Fraction;
+    use num_traits::Pow;
 
     #[test]
     fn add() {
