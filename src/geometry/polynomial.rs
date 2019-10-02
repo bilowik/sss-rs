@@ -3,6 +3,8 @@ use super::point::Point;
 use super::term::Term;
 use std::ops::{Deref, Add, Sub, Mul, Neg};
 use crate::{impl_binary_op_simple, impl_binary_op};
+use num_traits::Pow;
+
 
 /// A polynomial function that is made up of a Vec of @Term. It supports common operations done on
 /// polynomials including finding the 'y' value with a given 'x' value. 
@@ -10,6 +12,8 @@ use crate::{impl_binary_op_simple, impl_binary_op};
 pub struct Polynomial {
     terms: Vec<Term>,
 }
+
+
 
 
 
@@ -69,7 +73,7 @@ impl Polynomial {
     }
 
     /// Gets the degree of the polynomial
-    pub fn get_degree(&self) -> usize {
+    pub fn get_degree(&self) -> i32 {
         match self.terms.last() {
             Some(term) => {
                 // There is a last term, return its degree
@@ -83,7 +87,7 @@ impl Polynomial {
 
     }
 
-    fn bin_search_terms(&self, degree: usize) -> Result<usize, usize> {
+    fn bin_search_terms(&self, degree: i32) -> Result<usize, usize> {
         self.terms.as_slice().binary_search_by(|val: &Term| val.get_degree().cmp(&degree))
     }
 
@@ -128,7 +132,7 @@ impl Polynomial {
    
     /// Returns a copy of the term with the given degree, or creates a new zero coefficient term
     /// and returns it. This term is not added into the polynomial
-    pub fn get_term(&self, degree: usize) -> Term {
+    pub fn get_term(&self, degree: i32) -> Term {
         match self.bin_search_terms(degree) {
             Ok(index) => {
                 // term exists
@@ -197,14 +201,20 @@ impl Polynomial {
 
         for term_index in 0..self.terms.len() {
             let curr_term = &self.terms[term_index];
-            frac = frac + ((x_val.pow(curr_term.get_degree() as u32)) * curr_term.get_co());
+            frac = frac + ((x_val.pow(curr_term.get_degree())) * curr_term.get_co());
         }
 
         frac
     }
 
 
+
+
 }
+
+
+
+
 
 
 impl Neg for Polynomial {
@@ -317,7 +327,7 @@ impl PolynomialBuilder {
         self.polynomial.set_term(term);
         self
     }
-    pub fn with<T: Into<Fraction>>(self, val: T, degree: usize) -> Self {
+    pub fn with<T: Into<Fraction>>(self, val: T, degree: i32) -> Self {
         self.with_term(Term::new(val.into(), degree))
     }
     pub fn add_to(mut self, poly: Polynomial) -> Self {
@@ -603,6 +613,21 @@ mod test {
         assert_eq!(poly3.get_y_value(10000.into()), 0.into());
 
     }
+    
+    #[test]
+    fn negative_degree_test() {
+        let poly = Polynomial::builder()
+            .with(1, -1)
+            .with(3, -2)
+            .build();
+
+        assert_eq!(poly.get_y_value(5.into()), Fraction::new(8, 25));
+
+    }
+
+
+
+
 
 }
 
