@@ -2,7 +2,7 @@ use crate::geometry::*;
 use rand::Rng;
 use rand::rngs::StdRng;
 use rand::{SeedableRng, FromEntropy};
-//use std::ops::Rem;
+use std::ops::Rem;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use rand::seq::SliceRandom;
@@ -12,9 +12,9 @@ use lazy_static::lazy_static;
 
 lazy_static! {
     //pub static ref DEFAULT_PRIME: i64 = (2i64).pow(61) - 1; choosing a smaller prime
-    pub static ref DEFAULT_PRIME: i64 = 5000000029;
-    pub static ref CO_MIN: u32 = (2u32).pow(2);
-    pub static ref CO_MAX: u32 = (2u32).pow(14); //2048
+    pub static ref DEFAULT_PRIME: i64 = 4294967311;
+    pub static ref CO_MIN: i64 = 2i64.pow(2);
+    pub static ref CO_MAX: i64 = 2i64.pow(31); 
 }
 
 
@@ -43,11 +43,11 @@ pub fn create_shares_from_secret(secret: u8, _prime: i64, shares_required: usize
     share_poly.set_term(Term::new(secret as i64, 0));
 
     for i in 1usize..shares_required {
-        let curr_co: u32 = rand.gen_range(*CO_MIN, *CO_MAX);
+        let curr_co: i64 = rand.gen_range(*CO_MIN, *CO_MAX);
         // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
         // values
         
-        share_poly.set_term(Term::new(curr_co as i64, i));
+        share_poly.set_term(Term::new(curr_co, i as i32));
     }
     
 
@@ -168,7 +168,7 @@ pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<Point>>, prime:
 
 
    //TODO: Add initial capacities for vecs 
-pub fn create_shares_from_secret_u32(secret: u32, _prime: i64, shares_required: usize, 
+pub fn create_shares_from_secret_u32(secret: u32, prime: i64, shares_required: usize, 
                         shares_to_create: usize) -> Result<Vec<Point>, Error> {
 
     let mut shares: Vec<Point> = Vec::new();
@@ -179,18 +179,15 @@ pub fn create_shares_from_secret_u32(secret: u32, _prime: i64, shares_required: 
     share_poly.set_term(Term::new(secret, 0));
 
     for i in 1usize..shares_required {
-        let curr_co: u32 = rand.gen_range(*CO_MIN, *CO_MAX);
-        // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
-        // values
+        let curr_co: i64 = rand.gen_range(*CO_MIN, *CO_MAX);
         
-        share_poly.set_term(Term::new(curr_co as i64, i));
+        share_poly.set_term(Term::new(curr_co, i as i32));
     }
 
 
     for i in 1..=shares_to_create {
         let curr_x = Fraction::new(i as i64, 1);
-        let curr_y: Fraction = share_poly.get_y_value(curr_x);
-        
+        let curr_y: Fraction = share_poly.get_y_value(curr_x).rem(prime);
         
         shares.push(Point::new(curr_x, curr_y));
     }
@@ -199,13 +196,13 @@ pub fn create_shares_from_secret_u32(secret: u32, _prime: i64, shares_required: 
 }
 
 
-pub fn reconstruct_secret_u32(shares: Vec<Point>, _prime: i64, 
+pub fn reconstruct_secret_u32(shares: Vec<Point>, prime: i64, 
                           shares_needed: usize) -> Result<u32, Error> {
     match Polynomial::from_points(&shares, shares_needed - 1) {
         Ok(poly) => {
-            
             Ok(poly.get_term(0)
                         .get_co()
+                        .rem(prime)
                         .get_numerator() as u32)
                         
             /*
@@ -560,6 +557,28 @@ mod tests {
         let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
 
         assert_eq!(secret, recon_secret);
+
+
+    }
+
+
+    #[test]
+    fn predictable_test() {
+        use std::convert::TryInto;
+        let secret = b"Hell";
+        let secret_4_byte: Vec<u32> = secret.chunks(4)
+                        .map(|chunk| u32::from_be_bytes(chunk.try_into().unwrap()))
+                        .collect();
+        let prime: i64 = *DEFAULT_PRIME;
+        let shares: Vec<Vec<u32>> = Vec::with_capacity(secret.len());
+        let num_shares = 5;
+
+        let shares = create_share_lists_from_secrets_u32(secret_4_byte.as_slice(), prime, num_shares, 
+                                                         num_shares).unwrap();
+        let recon = reconstruct_secrets_from_share_lists_u32(shares, prime, num_shares).unwrap();
+
+        assert_eq!(secret_4_byte, recon);
+        
 
 
     }
