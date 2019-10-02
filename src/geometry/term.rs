@@ -10,18 +10,18 @@ use crate::impl_binary_op;
 /// 'x' ^ @degree. 
 #[derive(Default, Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Term {
-    degree: usize, // The degree x is raised to
+    degree: i32, // The degree x is raised to
     co: Fraction, // The coefficient to the term
 }
 
 impl Term {
 
     /// Creates a new Term with a given fraction and degree
-    pub fn new<T: Into<Fraction>>(co: T, degree: usize) -> Self {
+    pub fn new<T: Into<Fraction>>(co: T, degree: i32) -> Self {
         Term {co: co.into(), degree}
     }
 
-    pub fn get_degree(&self) -> usize {
+    pub fn get_degree(&self) -> i32 {
         self.degree
     }
 
