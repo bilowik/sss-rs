@@ -666,42 +666,4 @@ mod tests {
         }
     }
 
-
-
-    #[test]
-    fn stress_test_sharer() {
-        
-        use rand::Rng;
-        use rand::rngs::StdRng;
-        use rand::SeedableRng;
-        use rand::FromEntropy;
-        let mut secret_buf = [0u8; 67];
-        let dir = "./";
-        let stem = ".stress_test_sharer";
-        let num_shares = 8;
-        let mut rand = StdRng::from_entropy();
-
-        for i in 0..1000 {
-            println!("RUN NUMBER: {}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", i);
-            rand.fill(&mut secret_buf[..]);
-            std::fs::write("./stress_test_original", &mut secret_buf[..]).unwrap();
-            let sharer = Sharer::builder(Secret::InMemory(secret_buf.clone().to_vec()))
-                                                .shares_required(num_shares)
-                                                .shares_to_create(num_shares)
-                                                .build()
-                                                .unwrap();
-            sharer.share_to_files(dir, stem).unwrap();
-            let mut recon = Secret::point_at_file("./stress_test_recon");
-            recon.reconstruct_from_files(dir, stem, num_shares).unwrap();
-        }
-    }
-
-
 }
-
-
-
-
-
-
-
