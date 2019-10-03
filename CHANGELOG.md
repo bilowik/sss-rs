@@ -1,3 +1,14 @@
+## sss-rs 0.5.0 10/02/2019
+ - Re-enabled finite field arithmetic via GF(256)
+ 	- A decrease in share creation speed by a factor of 4 (since we are processing bytes vs u32s)
+	- Reconstruction speed has remained the same.
+ 	- Shares are now the same size as the secret
+	- When shares exceed 10 there's no longer a chance at an multiplication overflow
+	- Secrets with len % 4 != 0 no longer have trailing bytes not properly shared with finite field 
+		arithmetic due to points' y-values never being larger than the prime
+		- All bytes in general are now guaranteed to be properly shared via finite field arithmetic
+	- Reconstruction and share speed do not scale linearly with the number of shares (citation needed)
+
 ## sss-rs 0.4.0 09/29/2019
  - Segmented reading/processing of secrets and shares
 	- For all secrets/shares, they are read in chunks of 8KB, which had shown to give the best 
