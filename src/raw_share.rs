@@ -31,8 +31,8 @@ lazy_static! {
 ///     hide the secret. If @co_max_bits == 0, this function will panic.
 ///
 /// Return: This function will return Ok<Vec<(u8, u8)>> upon success. 
-pub fn create_shares_from_secret(secret: u8, shares_required: usize, 
-                        shares_to_create: usize) -> Result<Vec<(u8, u8)>, Error> {
+pub fn create_shares_from_secret(secret: u8, shares_required: u8, 
+                        shares_to_create: u8) -> Result<Vec<(u8, u8)>, Error> {
 
     if shares_required > shares_to_create {
         return Err(Error::UnreconstructableSecret(shares_to_create, shares_required));
@@ -48,12 +48,12 @@ pub fn create_shares_from_secret(secret: u8, shares_required: usize,
 
     share_poly.set_coeff(Coeff(secret), 0);
 
-    for i in 1usize..shares_required {
+    for i in 1..shares_required {
         let curr_co: u8 = rand.gen_range(2, 255);
         // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
         // values
         
-        share_poly.set_coeff(Coeff(curr_co), i);
+        share_poly.set_coeff(Coeff(curr_co), i as usize);
     }
     
 
@@ -91,8 +91,8 @@ pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
 /// since that is how they would be distributed.
 /// @secret: A slice of bytes to be used to create the vector of share vectors
 /// ... For the rest of the arguments, see @create_shares_from_secret
-pub fn create_share_lists_from_secrets(secret: &[u8], shares_required: usize,
-                                   shares_to_create: usize
+pub fn create_share_lists_from_secrets(secret: &[u8], shares_required: u8,
+                                   shares_to_create: u8
                                    ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
     if secret.len() == 0 {
         return Err(Error::EmptySecretArray);
@@ -266,10 +266,10 @@ pub fn transpose_vec_matrix<T: Clone>(matrix: Vec<Vec<T>>) -> Result<Vec<Vec<T>>
 /// Local Error enum, used to report errors that would only occur within this file.
 #[derive(Debug)]
 pub enum Error {
-    NotEnoughShares { given: usize, required: usize },
+    NotEnoughShares { given: u8, required: u8 },
     InvalidMatrix { index_of_invalid_length_row: usize },
-    InvalidNumberOfShares(usize),
-    UnreconstructableSecret(usize, usize),
+    InvalidNumberOfShares(u8),
+    UnreconstructableSecret(u8, u8),
     EmptySecretArray,
 }
 

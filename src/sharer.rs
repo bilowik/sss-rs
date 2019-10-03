@@ -10,7 +10,7 @@ use log::*;
 
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
-const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
+pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
 
 
 
@@ -20,8 +20,8 @@ const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perfora
 #[derive(Debug)]
 pub struct Sharer {
     secret: Secret, // The source of the secret, either an in memory vec or a file path
-    shares_required: usize, // The number of shares required to reconstruct the secret
-    shares_to_create: usize, // The number of shares to create
+    shares_required: u8, // The number of shares required to reconstruct the secret
+    shares_to_create: u8, // The number of shares to create
 }
 
 
@@ -67,7 +67,7 @@ impl Sharer {
 
 
             
-        if dests.len() < self.shares_to_create {
+        if dests.len() < (self.shares_to_create as usize) {
             // Not enough dests to share shares to
             return Err(Box::new(
                     SharerError::NotEnoughWriteableDestinations(dests.len(), self.shares_to_create)));
@@ -130,7 +130,7 @@ impl Sharer {
     pub fn share_to_files(&self, dir: &str, stem: &str) -> Result<(), Box<dyn Error>> {
         let file_paths = generate_share_file_paths(dir, stem, self.shares_to_create);
 
-        let mut dests: Vec<Box<dyn Write>> = Vec::with_capacity(self.shares_to_create);
+        let mut dests: Vec<Box<dyn Write>> = Vec::with_capacity(self.shares_to_create as usize);
 
         for path in file_paths {
             let f = File::create(path)?;
@@ -184,8 +184,8 @@ impl Sharer {
 #[derive(Debug)]
 pub struct SharerBuilder {
     secret: Secret, // The secret to be shared 
-    shares_required: usize, // The number of shares needed to reconstruct the secret
-    shares_to_create: usize, // The number of shares to generate
+    shares_required: u8, // The number of shares needed to reconstruct the secret
+    shares_to_create: u8, // The number of shares to generate
 }
 
 
@@ -216,7 +216,7 @@ impl SharerBuilder {
     /// Default: 3
     /// If set greater than shares_to_create, will set shares_to_create equal to it.
     /// Must be >= 2, else $build() will fail
-    pub fn shares_required(mut self, shares_required: usize) -> Self {
+    pub fn shares_required(mut self, shares_required: u8) -> Self {
         self.shares_required = shares_required;
         if self.shares_required > self.shares_to_create {
             self.shares_to_create = shares_required;
@@ -228,7 +228,7 @@ impl SharerBuilder {
     /// Default: 3
     /// If set less than shares_to_create, will set shares_required equal to it.
     /// Must be >= 2 AND  >= $shares_required, else $build() will fail
-    pub fn shares_to_create(mut self, shares_to_create: usize) -> Self {
+    pub fn shares_to_create(mut self, shares_to_create: u8) -> Self {
         self.shares_to_create = shares_to_create;
         if self.shares_to_create < self.shares_required {
             self.shares_required = self.shares_to_create;
@@ -488,7 +488,7 @@ impl Secret {
     /// Performs the reconstruction of the shares. No validation is done at the moment to verify
     /// that the reconstructed secret is correct.
     pub fn reconstruct_from_files(&mut self, dir: &str, stem: &str, 
-                                  shares_required: usize) -> Result<(), Box<dyn Error>> {
+                                  shares_required: u8) -> Result<(), Box<dyn Error>> {
 
         let share_paths = generate_share_file_paths(dir, stem, shares_required);
         let share_files: Vec<Result<File, Box<dyn Error>>> = share_paths.into_iter()
@@ -526,9 +526,9 @@ impl Secret {
 pub enum SharerError {
     ReconstructionNotEqual,
     EmptySecret,
-    InvalidNumberOfShares(usize),
-    NotEnoughWriteableDestinations(usize, usize),
-    InvalidNumberOfBytesFromSource(usize),
+    InvalidNumberOfShares(u8),
+    NotEnoughWriteableDestinations(usize, u8),
+    InvalidNumberOfBytesFromSource(u8),
     VerificationFailure(String, String),
 }
 
@@ -573,9 +573,9 @@ impl Error for SharerError {}
 
 // Generates paths for the shares with in given dir with a given stem. 
 // It is assumed that dir is a valid directory, no checks are done.
-fn generate_share_file_paths(dir: &str, stem: &str, num_files: usize) -> Vec<String> {
+fn generate_share_file_paths(dir: &str, stem: &str, num_files: u8) -> Vec<String> {
     let mut path_buf = Path::new(dir).to_path_buf();
-    let mut generated_paths: Vec<String> = Vec::with_capacity(num_files);
+    let mut generated_paths: Vec<String> = Vec::with_capacity(num_files as usize);
 
     for i in 0..num_files {
         path_buf.push(format!("{}.s{}", stem, i));
@@ -593,48 +593,8 @@ fn generate_share_file_paths(dir: &str, stem: &str, num_files: usize) -> Vec<Str
 mod tests {
     use super::*;
 
-    #[cfg(feature = "file_tests")]
-    #[test]
-    fn large_file_test() {
-        use std::time::Instant;
-        env_logger::builder().is_test(true).try_init().unwrap();
-        
-        
-        let dir = "./";
-        let stem = "test.txt";
-        let num_shares = 2;
-        let secret = Secret::InFile(String::from("./test.txt"));
-        let sharer = Sharer::builder(secret)
-                            .shares_required(num_shares)
-                            .shares_to_create(num_shares)
-                            .build()
-                            .unwrap();
-        
-        let start_sharing = Instant::now();
-        sharer.share_to_files(dir, stem).unwrap();
-        let mut recon = Secret::InFile(String::from("./test.txt.recon"));
-
-        let elap_sharing = start_sharing.elapsed().as_millis();
-
-        let start_recon = Instant::now();
-        recon.reconstruct_from_files(dir, stem, num_shares).unwrap();
-        let elap_recon = start_recon.elapsed().as_millis();
-        println!(
-"Read Segment Size; {}
- Sharing time elapsed: {}
- Recon time elapsed: {}
- ~~~~~~~~~~~~~~~~~~~~~~~~~~~",
- READ_SEGMENT_SIZE,
- elap_sharing,
- elap_recon);
-    }
-                                   
-
-    
     #[test]
     fn basic_share_reconstruction() {
-
-
         let dir = "./";
         let stem = "basic_share_reconstruction_test";
         let num_shares = 2;
@@ -708,7 +668,6 @@ mod tests {
 
 
 
-    #[cfg(feature = "benchmark_tests")]
     #[test]
     fn stress_test_sharer() {
         
