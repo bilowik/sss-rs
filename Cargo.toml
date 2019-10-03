@@ -30,4 +30,4 @@ galois_2p8 = "0.1.1"
 [features]
 default = []
 file_tests = []
-benchmark_tests = []
+benchmarks = []
