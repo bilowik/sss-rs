@@ -6,8 +6,6 @@ use std::path::Path;
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use std::convert::TryFrom;
-use log::*;
-
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
@@ -41,19 +39,6 @@ impl Sharer {
     pub fn share(&self, mut dests: &mut Vec<Box<dyn Write>>) 
         -> Result<(), Box<dyn Error>> {
 
-        // logging information
-        let l = log_enabled!(Level::Info);
-        let mut percent_finished: u64 = 0;
-        let mut total_bytes: u64 = 0;
-        let mut bytes_finished: u64 = 0;
-        if l {
-            total_bytes = self.secret.len()?;
-            bytes_finished = 0;
-        }
-
-
-
-
         // This just writes each corresponding share_list in share_lists to a dest in dests. This
         // is written here as a closure since it's used at two different points in this function
         let share_lists_to_dests = |lists: Vec<Vec<(u8, u8)>>, mut dests: &mut Vec<Box<dyn Write>>|
@@ -74,9 +59,6 @@ impl Sharer {
         }
       
         for secret_segment in (&self.secret).into_iter() {
-            if l {
-                info!("{}%: {} of {} shared", percent_finished, bytes_finished, total_bytes);
-            }
 
             // Return error if seret_segment is an error, or unwrap it if its ok. This can happen
             // if the secret is a file and a reading error occured during iteration
@@ -89,11 +71,6 @@ impl Sharer {
                 share_lists_to_dests(share_lists, &mut dests)?;
             }
 
-
-            if l {
-                bytes_finished = bytes_finished + (READ_SEGMENT_SIZE as u64);
-                percent_finished = (bytes_finished * 100) / total_bytes;
-            }
 
             std::mem::drop(secret_segment); // ensure the memory DOES get dropped
         }
@@ -259,10 +236,6 @@ impl Default for SharerBuilder {
 /// able to continue reading or may not depending on the initial error. See std::io::Error for
 /// possible errors.
 pub struct SecretIterator {
-    // Rust thinks it's dead code because a ptr is pulled from it and then it's set but never accessed,
-    // but the ptr is used to reconstruct a slice that is used as the reader.
-    #[allow(dead_code)]
-    secret: Option<Vec<u8>>, // If the secret is InMemory, this will be some vector
     reader: Box<dyn Read>, // reader is a reader of the vec in secret, or it's to an open file
 }
 
@@ -275,19 +248,11 @@ impl std::iter::IntoIterator for &Secret {
         match self {
             Secret::InFile(ref path) => 
                 SecretIterator { 
-                    secret: None, 
                     reader: Box::new(File::open(path).unwrap()) as Box<dyn Read>
             },
             Secret::InMemory(ref boxed_slice) => {
-                let secret_ptr = boxed_slice.as_ptr();
-                let len = boxed_slice.len();
-                unsafe {
-                    // Since the boxed_slice that the reference in reader points to is part of the
-                    // same object, the slice should always be valid
-                    SecretIterator {
-                        secret: Some(boxed_slice.to_vec()),
-                        reader: Box::new(std::slice::from_raw_parts(secret_ptr, len)) as Box<dyn Read>
-                    }
+                SecretIterator {
+                    reader: Box::new(std::io::Cursor::new(boxed_slice.clone())) as Box<dyn Read>,
                 }
             }
         }
