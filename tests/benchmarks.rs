@@ -1,6 +1,6 @@
 
-#[feature(benchmarks)]
 #[cfg(test)]
+#[cfg(feature = "benchmarks")]
 mod benchmarks {
     use sss_rs::*;
     use std::time::Instant;
@@ -13,7 +13,7 @@ mod benchmarks {
         
         let dir = "./";
         let stem = "test.txt";
-        let num_shares = 3;
+        let num_shares = 3u8;
         let secret = Secret::InFile(String::from("./test.txt"));
         let sharer = Sharer::builder(secret)
                             .shares_required(num_shares)
@@ -55,7 +55,7 @@ mod benchmarks {
         let stem = ".stress_test_sharer";
         let mut rand = StdRng::from_entropy();
 
-        for i in 0..1000 {
+        for i in 0..100 {
             println!("RUN NUMBER: {}~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", i);
             let num_shares: u8 = rand.gen_range(2, 254);
             let secret_len: usize = rand.gen_range(1, 10000);
@@ -82,9 +82,9 @@ mod benchmarks {
     }
 
 
-    pub fn generate_share_file_paths(dir: &str, stem: &str, num_files: usize) -> Vec<String> {
+    pub fn generate_share_file_paths(dir: &str, stem: &str, num_files: u8) -> Vec<String> {
         let mut path_buf = Path::new(dir).to_path_buf();
-        let mut generated_paths: Vec<String> = Vec::with_capacity(num_files);
+        let mut generated_paths: Vec<String> = Vec::with_capacity(num_files as usize);
 
         for i in 0..num_files {
             path_buf.push(format!("{}.s{}", stem, i));
