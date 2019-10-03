@@ -310,8 +310,8 @@ mod tests {
 
         for _ in 0..num_iters {
             let secret: u8 = rand.gen_range(1, 256) as u8;
-            let shares_required = rand.gen_range(2, 10);
-            let shares_to_create = shares_required + rand.gen_range(0, 6);
+            let shares_required: u8 = rand.gen_range(2, 10);
+            let shares_to_create: u8 = shares_required + rand.gen_range(0, 6);
 
             basic_single_value(secret, shares_to_create, shares_required);
         }
@@ -319,7 +319,7 @@ mod tests {
     }
 
 
-    fn basic_single_value(secret: u8, shares_to_create: usize, shares_required: usize) {
+    fn basic_single_value(secret: u8, shares_to_create: u8, shares_required: u8) {
 
         /* Was used to find an infinite loop, no longer needed, but keeping for future reference
         unsafe {
