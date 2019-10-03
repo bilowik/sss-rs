@@ -26,7 +26,6 @@ env_logger = "0.7.0"
 log = "0.4.8"
 galois_2p8 = "0.1.1"
 
-
 [features]
 default = []
 file_tests = []
