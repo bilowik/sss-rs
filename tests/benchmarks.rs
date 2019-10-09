@@ -13,6 +13,7 @@ mod benchmarks {
         
         let dir = "./";
         let stem = "test.txt";
+        let file_len = std::fs::metadata(&stem).unwrap().len();
         let num_shares = 3u8;
         let secret = Secret::InFile(String::from("./test.txt"));
         let sharer = Sharer::builder(secret)
@@ -38,10 +39,13 @@ mod benchmarks {
 "Read Segment Size; {}
  Sharing time elapsed: {}
  Recon time elapsed: {}
+ KB/s: {}
  ~~~~~~~~~~~~~~~~~~~~~~~~~~~",
  READ_SEGMENT_SIZE,
  elap_sharing,
- elap_recon);
+ elap_recon,
+ (file_len as f64) / elap_sharing as f64, // Since elap is in miliseconds, b/ms == kb/s
+ );
     }
 
 
