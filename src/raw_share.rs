@@ -1,7 +1,6 @@
 use crate::geometry::*;
-use rand::{Rng, RngCore};
+use rand::{Rng, RngCore, SeedableRng};
 use rand::rngs::StdRng;
-use rand::{SeedableRng, FromEntropy};
 use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use rand::seq::SliceRandom;
