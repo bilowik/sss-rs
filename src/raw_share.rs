@@ -1,5 +1,5 @@
 use crate::geometry::*;
-use rand::Rng;
+use rand::{Rng, RngCore};
 use rand::rngs::StdRng;
 use rand::{SeedableRng, FromEntropy};
 use crypto::sha3::Sha3;
@@ -17,22 +17,12 @@ lazy_static! {
 }
 
 
-
-/// Creates a vector of points that serve as the list of shares for a given byte of data. 
-/// @secret: The secret value that is to be split into shares
-/// @prime: The prime number that is used to generate a finite field to increase security. This is
-///     not checked to be prime, so no errors will be reported if this value isn't prime, which
-///     must be done outside this function for efficiency. 
-/// @shares_required: The number of shares required to recreate the secret
-/// @shares_to_create: The number of shares to create, so any number 'x' shares from the total 'y'
-///     shares are enough to recreate the secret. If < shares_required, it's automatically bumped
-///     up.
-/// @co_max_bits: The maximum number of bits for the randomly generated coefficients of the polynomial
-///     hide the secret. If @co_max_bits == 0, this function will panic.
-///
-/// Return: This function will return Ok<Vec<(u8, u8)>> upon success. 
-pub fn create_shares_from_secret(secret: u8, shares_required: u8, 
-                        shares_to_create: u8) -> Result<Vec<(u8, u8)>, Error> {
+/// See $create_shares_from_secret for documentation
+/// This function is similar except that a custom RNG can be used to produce the coefficients.
+/// NOTE: USE WITH CAUTION, static seeding can lead to predictable sharing and loss of unconditional
+/// security.
+pub fn create_shares_from_secret_custom_rng(secret: u8, shares_required: u8, shares_to_create: u8, 
+                                            rand: &mut Box<dyn RngCore>) -> Result<Vec<(u8, u8)>, Error> {
 
     if shares_required > shares_to_create {
         return Err(Error::UnreconstructableSecret(shares_to_create, shares_required));
@@ -44,7 +34,6 @@ pub fn create_shares_from_secret(secret: u8, shares_required: u8,
     let mut shares: Vec<(u8, u8)> = Vec::new();
     let mut share_poly = GaloisPolynomial::new();
     
-    let mut rand = StdRng::from_entropy();
 
     share_poly.set_coeff(Coeff(secret), 0);
 
@@ -66,6 +55,26 @@ pub fn create_shares_from_secret(secret: u8, shares_required: u8,
 }
 
 
+/// Creates a vector of points that serve as the list of shares for a given byte of data. 
+/// @secret: The secret value that is to be split into shares
+/// @prime: The prime number that is used to generate a finite field to increase security. This is
+///     not checked to be prime, so no errors will be reported if this value isn't prime, which
+///     must be done outside this function for efficiency. 
+/// @shares_required: The number of shares required to recreate the secret
+/// @shares_to_create: The number of shares to create, so any number 'x' shares from the total 'y'
+///     shares are enough to recreate the secret. If < shares_required, it's automatically bumped
+///     up.
+/// @co_max_bits: The maximum number of bits for the randomly generated coefficients of the polynomial
+///     hide the secret. If @co_max_bits == 0, this function will panic.
+///
+/// Return: This function will return Ok<Vec<(u8, u8)>> upon success. 
+pub fn create_shares_from_secret(secret: u8, shares_required: u8, 
+                        shares_to_create: u8) -> Result<Vec<(u8, u8)>, Error> {
+    create_shares_from_secret_custom_rng(secret, shares_required, shares_to_create, 
+                                &mut (Box::new(StdRng::from_entropy()) as Box<dyn RngCore>))
+}
+
+
 /// Reconstructs a secret from a given Vector of shares (points) and returns that secret. No
 /// guarantees are made that the shares are valid together and that the secret is valid. If there
 /// are enough shares, a secret will be generated.
@@ -82,6 +91,39 @@ pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
 }
 
 
+
+/// See $create_shares_from_secret for documentation
+/// This function is similar except that a custom RNG can be used to produce the coefficients.
+/// NOTE: USE WITH CAUTION, static seeding can lead to predictable sharing and loss of unconditional
+/// security.
+pub fn create_share_lists_from_secrets_custom_rng(secret: &[u8], shares_required: u8,
+                                   shares_to_create: u8, rand: &mut Box<dyn RngCore>
+                                   ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
+    if secret.len() == 0 {
+        return Err(Error::EmptySecretArray);
+    }
+
+    let mut list_of_share_lists: Vec<Vec<(u8, u8)>> = Vec::with_capacity(secret.len());
+    for s in secret {
+        match create_shares_from_secret_custom_rng(*s, 
+                                           shares_required,
+                                           shares_to_create,
+                                           rand) {
+            Ok(shares) => {
+                // Now this list needs to be transposed:
+                list_of_share_lists.push(shares);
+            },
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+    let list_of_share_lists = transpose_vec_matrix(list_of_share_lists).unwrap();
+    Ok(list_of_share_lists)
+}
+
+
+
 /// This is a wrapper around @create_share_from_secret that loops through the @secret slice and
 /// returns a vector of vectors, with each vector being all the shares for a single byte of the
 /// secret.
@@ -94,26 +136,8 @@ pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
 pub fn create_share_lists_from_secrets(secret: &[u8], shares_required: u8,
                                    shares_to_create: u8
                                    ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
-    if secret.len() == 0 {
-        return Err(Error::EmptySecretArray);
-    }
-
-    let mut list_of_share_lists: Vec<Vec<(u8, u8)>> = Vec::with_capacity(secret.len());
-    for s in secret {
-        match create_shares_from_secret(*s, 
-                                           shares_required,
-                                           shares_to_create) {
-            Ok(shares) => {
-                // Now this list needs to be transposed:
-                list_of_share_lists.push(shares);
-            },
-            Err(e) => {
-                return Err(e);
-            }
-        }
-    }
-    let list_of_share_lists = transpose_vec_matrix(list_of_share_lists).unwrap();
-    Ok(list_of_share_lists)
+    create_share_lists_from_secrets_custom_rng(secret, shares_required, shares_to_create,
+                                            &mut (Box::new(StdRng::from_entropy()) as Box<dyn RngCore>))
 }
 
 
