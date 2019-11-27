@@ -1,3 +1,8 @@
+## sss-rs 0.6.0 11/27/2019
+ - Added functions to raw_share that allow for custom RNGs for coefficient generation
+ 	- It should be noted that using predictable RNG can lead to a loss of unconditional security,
+		so use with caution
+
 ## sss-rs 0.5.0 10/02/2019
  - Re-enabled finite field arithmetic via GF(256)
  	- A decrease in share creation speed by a factor of 4 (since we are processing bytes vs u32s)
