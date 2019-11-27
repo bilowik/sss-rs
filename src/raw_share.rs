@@ -322,14 +322,14 @@ mod tests {
     use rand::SeedableRng;
     use rand::Rng;
     use super::*;
-    use rand::rngs::SmallRng;
+    use rand::rngs::StdRng;
 
     #[test]
     fn many_test() {
 
         let num_iters = 10;
 
-        let mut rand = SmallRng::seed_from_u64(123u64);
+        let mut rand = StdRng::seed_from_u64(123u64);
 
         for _ in 0..num_iters {
             let secret: u8 = rand.gen_range(1, 256) as u8;
