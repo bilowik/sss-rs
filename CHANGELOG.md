@@ -1,3 +1,7 @@
+## sss-rs 0.6.1 11/27/2019
+ - Updated rand and chacha deps to 0.7.2 and 0.2.1 respectively
+
+
 ## sss-rs 0.6.0 11/27/2019
  - Added functions to raw_share that allow for custom RNGs for coefficient generation
  	- It should be noted that using predictable RNG can lead to a loss of unconditional security,
