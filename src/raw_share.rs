@@ -116,11 +116,11 @@ pub fn create_share_lists_from_secrets_custom_rng(
 ///
 /// The format this returns the secrets in is, since this is how they would be
 /// distributed:
+/// ```notrust 
+/// share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
 ///
-///     share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
-///
-///     share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-///
+/// share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
+/// ```
 /// **secret:** A slice of bytes to be used to create the vector of share vectors
 ///
 /// For the rest of the arguments, see [create_shares_from_secret]
@@ -142,11 +142,11 @@ pub fn create_share_lists_from_secrets(
 ///
 /// It expects the shares to be in this format since this is how they are distributed.
 /// In other words, the share lists generated from
+/// ```notrust
+/// share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
 ///
-///     share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
-///
-///     share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-///
+/// share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
+/// ```
 /// **share_lists:** A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
 ///     of the secret.
 ///
@@ -309,21 +309,4 @@ mod tests {
         assert_eq!(secret, &recon_secret[..])
     }
 
-    #[test]
-    fn shuffle() {
-        let secret = "Hello World";
-        let pass = String::from("password");
-        let mut hashed_pass = [0; 32];
-        let mut hasher = Sha3::sha3_256();
-        hasher.input(pass.as_bytes());
-        hasher.result(&mut hashed_pass);
-
-        let share_lists = create_share_lists_from_secrets(secret.as_bytes(), 3, 3).unwrap();
-        let share_lists = shuffle_share_lists(share_lists, &hashed_pass, ShuffleOp::Shuffle);
-        let share_lists = shuffle_share_lists(share_lists, &hashed_pass, ShuffleOp::ReverseShuffle);
-        let recon_secret_vec = reconstruct_secrets_from_share_lists(share_lists).unwrap();
-        let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
-
-        assert_eq!(secret, recon_secret);
-    }
 }
