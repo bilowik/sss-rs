@@ -72,6 +72,7 @@ impl Sharer {
                     secret_segment.as_slice(),
                     self.shares_required,
                     self.shares_to_create,
+                    None
                 )?;
                 share_lists_to_dests(share_lists, &mut dests)?;
             }
@@ -83,7 +84,7 @@ impl Sharer {
         // to the dests
         let hash: Vec<u8> = self.secret.calculate_hash()?.to_vec();
         let share_lists =
-            create_share_lists_from_secrets(&hash, self.shares_required, self.shares_to_create)?;
+            create_share_lists_from_secrets(&hash, self.shares_required, self.shares_to_create, None)?;
 
         // The shares for the hash have been created, write them all to dests
         share_lists_to_dests(share_lists, &mut dests)?;

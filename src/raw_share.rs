@@ -2,17 +2,24 @@ use crate::geometry::*;
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
 
-/// This function is similar except that a custom RNG can be used to produce the coefficients.
+/// Creates a vector of points that serve as the list of shares for a given byte of data.
 ///
-/// See [create_shares_from_secret] for documentation.
+/// **secret:** The secret value that is to be split into shares
 ///
-/// NOTE: USE WITH CAUTION, static seeding can lead to predictable sharing and loss of unconditional
-/// security.
-pub fn create_shares_from_secret_custom_rng(
+/// **shares_required:** The number of shares required to recreate the secret
+///
+/// **shares_to_create:** The number of shares to create, so any number 'x' shares from the total 'y'
+/// shares are enough to recreate the secret. If < shares_required, it's automatically bumped up.
+///
+/// **rand:** The rng source for the generated coefficients in the sharing process.
+/// The default is StdRng::from_entropy()
+/// 
+/// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
+pub fn create_shares_from_secret(
     secret: u8,
     shares_required: u8,
     shares_to_create: u8,
-    rand: &mut Box<dyn RngCore>,
+    mut rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<(u8, u8)>, Error> {
     if shares_required > shares_to_create {
         return Err(Error::UnreconstructableSecret(
@@ -23,17 +30,17 @@ pub fn create_shares_from_secret_custom_rng(
     if shares_to_create < 2 {
         return Err(Error::InvalidNumberOfShares(shares_to_create));
     }
-
+   
+    // Use the given rng or if none was given, use from entropy
     let mut shares: Vec<(u8, u8)> = Vec::new();
     let mut share_poly = GaloisPolynomial::new();
 
     share_poly.set_coeff(Coeff(secret), 0);
-
     for i in 1..shares_required {
-        let curr_co: u8 = rand.gen_range(2, 255);
-        // Limiting the coefficient size to i16 lowers the risk of overflow when calculating y
-        // values
-
+        let curr_co = match rand {
+            Some(ref mut rng) => rng.gen_range(2, 255),
+            None => StdRng::from_entropy().gen_range(2, 255)
+        };
         share_poly.set_coeff(Coeff(curr_co), i as usize);
     }
 
@@ -45,26 +52,6 @@ pub fn create_shares_from_secret_custom_rng(
     Ok(shares)
 }
 
-/// Creates a vector of points that serve as the list of shares for a given byte of data.
-///
-/// **secret:** The secret value that is to be split into shares
-///
-/// **shares_required:** The number of shares required to recreate the secret
-///
-/// **shares_to_create:** The number of shares to create, so any number 'x' shares from the total 'y'
-/// shares are enough to recreate the secret. If < shares_required, it's automatically bumped up.
-pub fn create_shares_from_secret(
-    secret: u8,
-    shares_required: u8,
-    shares_to_create: u8,
-) -> Result<Vec<(u8, u8)>, Error> {
-    create_shares_from_secret_custom_rng(
-        secret,
-        shares_required,
-        shares_to_create,
-        &mut (Box::new(StdRng::from_entropy()) as Box<dyn RngCore>),
-    )
-}
 
 /// Reconstructs a secret from a given Vector of shares (points) and returns that secret.
 ///
@@ -79,25 +66,48 @@ pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
     GaloisPolynomial::get_y_intercept_from_points(shares.as_slice())
 }
 
-/// This function is similar except that a custom RNG can be used to produce the coefficients.
+/// This is a wrapper around [create_shares_from_secret]
+/// that loops through the *secret* slice and secret.
 ///
-/// See [create_shares_from_secret] for documentation
+/// The format this returns the secrets in is, since this is how they would be
+/// distributed:
+/// ```notrust 
+/// share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
 ///
-/// NOTE: USE WITH CAUTION, static seeding can lead to predictable sharing and loss of unconditional
-/// security.
-pub fn create_share_lists_from_secrets_custom_rng(
+/// share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
+/// ```
+/// **secret:** A slice of bytes to be used to create the vector of share vectors
+///
+/// **rand:** The rng source for the generated coefficients in the sharing process.
+/// The default is StdRng::from_entropy()
+///
+/// *For the rest of the arguments, see [create_shares_from_secret]*
+///
+/// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
+pub fn create_share_lists_from_secrets(
     secret: &[u8],
     shares_required: u8,
     shares_to_create: u8,
-    rand: &mut Box<dyn RngCore>,
+    rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
     if secret.len() == 0 {
         return Err(Error::EmptySecretArray);
     }
-
+    
+    // If rand is None, create a new rand and return it's reference
+    let mut from_entropy: Box<dyn RngCore>;
+    let mut rand = match rand {
+        Some(rng) => rng,
+        None => {
+            from_entropy = Box::new(StdRng::from_entropy());
+            &mut from_entropy
+        }
+    };
+    
     let mut list_of_share_lists: Vec<Vec<(u8, u8)>> = Vec::with_capacity(secret.len());
+
     for s in secret {
-        match create_shares_from_secret_custom_rng(*s, shares_required, shares_to_create, rand) {
+        match create_shares_from_secret(*s, shares_required, shares_to_create, Some(&mut rand)) {
             Ok(shares) => {
                 // Now this list needs to be transposed:
                 list_of_share_lists.push(shares);
@@ -111,31 +121,6 @@ pub fn create_share_lists_from_secrets_custom_rng(
     Ok(list_of_share_lists)
 }
 
-/// This is a wrapper around [create_shares_from_secret]
-/// that loops through the *secret* slice and secret.
-///
-/// The format this returns the secrets in is, since this is how they would be
-/// distributed:
-/// ```notrust 
-/// share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
-///
-/// share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-/// ```
-/// **secret:** A slice of bytes to be used to create the vector of share vectors
-///
-/// For the rest of the arguments, see [create_shares_from_secret]
-pub fn create_share_lists_from_secrets(
-    secret: &[u8],
-    shares_required: u8,
-    shares_to_create: u8,
-) -> Result<Vec<Vec<(u8, u8)>>, Error> {
-    create_share_lists_from_secrets_custom_rng(
-        secret,
-        shares_required,
-        shares_to_create,
-        &mut (Box::new(StdRng::from_entropy()) as Box<dyn RngCore>),
-    )
-}
 
 /// This is a wrapper around [reconstruct_secret] that iterates over each Vec of shares and
 /// reconstructs their respective byte of the secret.
@@ -150,7 +135,7 @@ pub fn create_share_lists_from_secrets(
 /// **share_lists:** A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
 ///     of the secret.
 ///
-/// ... For the rest of the arguments, see [reconstruct_secret]
+/// *For the rest of the arguments, see [reconstruct_secret]*
 pub fn reconstruct_secrets_from_share_lists(
     share_lists: Vec<Vec<(u8, u8)>>,
 ) -> Result<Vec<u8>, Error> {
