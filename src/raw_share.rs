@@ -245,7 +245,7 @@ mod tests {
         }
         */
 
-        let shares = create_shares_from_secret(secret, shares_required, shares_to_create).unwrap();
+        let shares = create_shares_from_secret(secret, shares_required, shares_to_create, None).unwrap();
 
         let secret_decrypted = reconstruct_secret(shares);
         assert_eq!(secret, secret_decrypted);
