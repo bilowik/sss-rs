@@ -8,8 +8,10 @@ use rand_chacha::ChaChaRng;
 
 
 
-/// See $create_shares_from_secret for documentation
 /// This function is similar except that a custom RNG can be used to produce the coefficients.
+///
+/// See [create_shares_from_secret] for documentation.
+///
 /// NOTE: USE WITH CAUTION, static seeding can lead to predictable sharing and loss of unconditional
 /// security.
 pub fn create_shares_from_secret_custom_rng(secret: u8, shares_required: u8, shares_to_create: u8, 
@@ -47,13 +49,13 @@ pub fn create_shares_from_secret_custom_rng(secret: u8, shares_required: u8, sha
 
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data. 
-/// @secret: The secret value that is to be split into shares
-/// @shares_required: The number of shares required to recreate the secret
-/// @shares_to_create: The number of shares to create, so any number 'x' shares from the total 'y'
-///     shares are enough to recreate the secret. If < shares_required, it's automatically bumped
-///     up.
 ///
-/// Return: This function will return Ok<Vec<(u8, u8)>> upon success. 
+/// **secret:** The secret value that is to be split into shares
+///
+/// **shares_required:** The number of shares required to recreate the secret
+///
+/// **shares_to_create:** The number of shares to create, so any number 'x' shares from the total 'y'
+/// shares are enough to recreate the secret. If < shares_required, it's automatically bumped up.
 pub fn create_shares_from_secret(secret: u8, shares_required: u8, 
                         shares_to_create: u8) -> Result<Vec<(u8, u8)>, Error> {
     create_shares_from_secret_custom_rng(secret, shares_required, shares_to_create, 
@@ -61,21 +63,25 @@ pub fn create_shares_from_secret(secret: u8, shares_required: u8,
 }
 
 
-/// Reconstructs a secret from a given Vector of shares (points) and returns that secret. No
-/// guarantees are made that the shares are valid together and that the secret is valid. If there
-/// are enough shares, a secret will be generated.
-/// @shares: The vector of shares that are used to regenerate the polynomial and finding the
+/// Reconstructs a secret from a given Vector of shares (points) and returns that secret. 
+///
+/// No guarantees are made that the shares are valid together and that the secret is valid. 
+/// If there are enough shares, a secret will be generated.
+///
+/// **shares:** The vector of shares that are used to regenerate the polynomial and finding the
 ///     secret. @shares.len() must be >= @shares_needed, else this will return an error.
 ///
-/// This will return an error if @shares.len() < shares_needed.
+/// This will return an error if **shares.len() < shares_needed**.
 pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
     GaloisPolynomial::get_y_intercept_from_points(shares.as_slice())
 }
 
 
 
-/// See $create_shares_from_secret for documentation
 /// This function is similar except that a custom RNG can be used to produce the coefficients.
+///
+/// See [create_shares_from_secret] for documentation
+///
 /// NOTE: USE WITH CAUTION, static seeding can lead to predictable sharing and loss of unconditional
 /// security.
 pub fn create_share_lists_from_secrets_custom_rng(secret: &[u8], shares_required: u8,
@@ -106,15 +112,19 @@ pub fn create_share_lists_from_secrets_custom_rng(secret: &[u8], shares_required
 
 
 
-/// This is a wrapper around @create_share_from_secret that loops through the @secret slice and
-/// returns a vector of vectors, with each vector being all the shares for a single byte of the
-/// secret.
-/// The format this returns the secrets in is:
+/// This is a wrapper around [create_shares_from_secret]
+/// that loops through the *secret* slice and secret.
+///
+/// The format this returns the secrets in is, since this is how they would be 
+/// distributed:
+///
 ///     share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()> 
+///
 ///     share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-/// since that is how they would be distributed.
-/// @secret: A slice of bytes to be used to create the vector of share vectors
-/// ... For the rest of the arguments, see @create_shares_from_secret
+///
+/// **secret:** A slice of bytes to be used to create the vector of share vectors
+///
+/// For the rest of the arguments, see [create_shares_from_secret]
 pub fn create_share_lists_from_secrets(secret: &[u8], shares_required: u8,
                                    shares_to_create: u8
                                    ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
@@ -125,12 +135,17 @@ pub fn create_share_lists_from_secrets(secret: &[u8], shares_required: u8,
 
 /// This is a wrapper around @reconstruct_secret that iterates over each Vec of shares and
 /// reconstructs their respective byte of the secret.
-/// It expects the shares to be in this format:
+/// 
+/// It expects the shares to be in this format since this is how they are distributed.
+/// In other words, the share lists generated from
+/// 
 ///     share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()> 
+///
 ///     share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-/// since that is how they would be distributed.
-/// @share_lists: A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
+///
+/// **share_lists:** A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
 ///     of the secret.
+///
 /// ... For the rest of the arguments, see @reconstruct_secret
 pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<(u8, u8)>>) -> Result<Vec<u8>, Error> {
     let mut secrets: Vec<u8> = Vec::with_capacity(share_lists.len());
@@ -143,7 +158,8 @@ pub fn reconstruct_secrets_from_share_lists(share_lists: Vec<Vec<(u8, u8)>>) -> 
 
 
 /// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
-/// @matrix: The matrix to be transposed, must be a valid matrix else an error is returned.
+/// 
+/// **matrix:** The matrix to be transposed, must be a valid matrix else an error is returned.
 pub fn transpose_vec_matrix<T: Clone>(matrix: Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
 
     for i in 1..matrix.len() {
