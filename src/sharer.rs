@@ -10,11 +10,11 @@ use std::convert::TryFrom;
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
 
-
+pub const HI: usize = 32;
 
 
 /// Creates shares from a given secret. Shares to any suitable destination that implements Write
-/// and has conveinence functions for files. To instantiate, the builder should be used.
+/// and has conveinence functions for files. To instantiate, the [SharerBuilder] should be used.
 #[derive(Debug)]
 pub struct Sharer {
     secret: Secret, // The source of the secret, either an in memory vec or a file path
@@ -33,7 +33,9 @@ impl Sharer {
         }
     }
 
-    /// Shares all the shares to individual writeable destinations. This iterates through the
+    /// Shares all the shares to individual writeable destinations. 
+    ///
+    /// This iterates through the
     /// secret and calculates the share lists in chunks and writes the shares to their respective
     /// destinations
     pub fn share(&self, mut dests: &mut Vec<Box<dyn Write>>) 
@@ -97,13 +99,13 @@ impl Sharer {
     /// Shares all the shares to separate files for distribution.This is a wrapper for the $share 
     /// function.
     ///
-    /// Format:
-    ///     $dir/$stem.s<share_number>  For the shares
+    /// Format: **dir**/**stem**.s<share_number>
     ///
-    /// $stem: Defines the stem of the output files, they will be $stem.s0, $stem.s1, and so on..
-    /// $dir: The directory to output the shares to.
+    /// **stem:** Defines the stem of the output files, they will be stem.s0, stem.s1, and so on..
     ///
-    /// If $dir isn't valid, the LAST invalid destination file's error is returned. 
+    /// **dir:** The directory to output the shares to.
+    ///
+    /// If **dir** isn't valid, the LAST invalid destination file's error is returned. 
     pub fn share_to_files(&self, dir: &str, stem: &str) -> Result<(), Box<dyn Error>> {
         let file_paths = generate_share_file_paths(dir, stem, self.shares_to_create);
 
@@ -119,7 +121,8 @@ impl Sharer {
 
 
     /// Tests the reconstruction of the shares as outputted via the $share_to_files function.
-    /// $dir: The directory to output the temporary shares. Default is the current dir
+    ///
+    /// **dir:** The directory to output the temporary shares. Default is the current dir
     pub fn test_reconstruction_file(&self, dir: Option<&str>) -> Result<(), Box<dyn Error>> {
         let default_dir = "./";
         let dir = match dir {
@@ -155,9 +158,10 @@ impl Sharer {
 
 
 /// The builder struct to give the Sharer struct  builder style construction. 
+///
 /// Defaults:
-///     - shares_required: 3
-///     - shares_to_create: 3
+/// - **shares_required:** 3
+/// - **shares_to_create:** 3
 #[derive(Debug)]
 pub struct SharerBuilder {
     secret: Secret, // The secret to be shared 
@@ -190,9 +194,11 @@ impl SharerBuilder {
     }
 
     /// Sets the number of shares required for secret reconstruction
+    ///
     /// Default: 3
+    ///
     /// If set greater than shares_to_create, will set shares_to_create equal to it.
-    /// Must be >= 2, else $build() will fail
+    /// Must be >= 2, else build() will fail
     pub fn shares_required(mut self, shares_required: u8) -> Self {
         self.shares_required = shares_required;
         if self.shares_required > self.shares_to_create {
@@ -202,7 +208,9 @@ impl SharerBuilder {
     }
 
     /// Sets the number of shares to create.
+    ///
     /// Default: 3
+    ///
     /// If set less than shares_to_create, will set shares_required equal to it.
     /// Must be >= 2 AND  >= $shares_required, else $build() will fail
     pub fn shares_to_create(mut self, shares_to_create: u8) -> Self {
@@ -230,9 +238,12 @@ impl Default for SharerBuilder {
 }
 
 
-/// Iterator that iterates over a given Secret, returning smaller segments of it at a time. Returns
-/// Option<Result<Vec<u8>, Box<dyn Error>>> because file reads may fail, and in that case
-/// Some(Err(_)) is returned. Iteration can continue, but the behavior is undefined as it may be
+/// Iterator that iterates over a given Secret, returning smaller segments of it at a time. 
+///
+/// Returns Option<Result<Vec<u8>, Box<dyn Error>>> because file reads may fail, and in that case
+/// Some(Err(_)) is returned. 
+///
+/// Iteration can continue, but the behavior is undefined as it may be
 /// able to continue reading or may not depending on the initial error. See std::io::Error for
 /// possible errors.
 pub struct SecretIterator {
@@ -279,8 +290,10 @@ impl std::iter::Iterator for SecretIterator {
 
 }
 
-/// Contains the secret, whether in file or in memory stored in a Vec of bytes. This can be used
-/// for both sharing and reconstructing. When reconstructing, you can set it to reconstruct into
+/// Contains the secret, whether in file or in memory stored in a Vec of bytes. 
+///
+/// This can be used for both sharing and reconstructing. When reconstructing, 
+/// you can set it to reconstruct into
 /// a Vec by setting it to InMemory, or you can set it to output to a file. 
 /// For sharing, you can input a secret to be shared, either a file or a vec of bytes. 
 #[derive(Debug)]
@@ -308,8 +321,9 @@ impl Secret {
         Secret::InFile(String::from(path))
     }
 
-    /// Attempts to get the length of the Secret. This can fail if the secret is a file path that
-    /// doesn't exist.
+    /// Attempts to get the length of the Secret. 
+    ///
+    /// This can fail if the secret is a file path that doesn't exist.
     pub fn len(&self) -> Result<u64, Box<dyn Error>> {
         match self {
             Secret::InFile(ref path) => Ok(std::fs::metadata(path)?.len()),
@@ -319,6 +333,7 @@ impl Secret {
 
 
     /// Calculates and returns the Sha3-512 hash of the first 64 bytes of the secret. 
+    /// 
     /// This is mainly used for verifying secret reconstruction, where the chances of incorrect
     /// reconstruction resulting in the first 64 bytes being correct is extremely low. 
     ///
@@ -356,7 +371,8 @@ impl Secret {
         Ok(hex::encode(self.calculate_hash()?))
     }
 
-    /// Calculates a hash and compares it to the given hash. Returns Ok(true) if they're
+    /// Calculates a hash and compares it to the given hash. 
+    /// Returns Ok(true) if they're
     /// equivalent, Ok(false) if they aren't or an error if there was an issue calculating the hash
     /// (likely a read error if Secret was a file)
     pub fn verify(&self, hash: &[u8]) -> Result<bool, Box<dyn Error>> {
@@ -366,7 +382,7 @@ impl Secret {
 
     /// Reconstructs a secret from a given list of srcs. The srcs should all read the same number
     /// of bytes. 
-    /// $src_len MUST be an accurate length of the shares
+    /// **src_len** MUST be an accurate length of the shares
     pub fn reconstruct_from_srcs(&mut self, mut srcs: &mut Vec<Box<dyn Read>>, 
                                  src_len: u64) -> Result<(), Box<dyn Error>> {
 
@@ -450,8 +466,7 @@ impl Secret {
        Ok(())
     }
 
-    /// Performs the reconstruction of the shares. No validation is done at the moment to verify
-    /// that the reconstructed secret is correct.
+    /// Performs the reconstruction of the shares from files with in the given **dir** with the give **stem**
     pub fn reconstruct_from_files(&mut self, dir: &str, stem: &str, 
                                   shares_required: u8) -> Result<(), Box<dyn Error>> {
 
