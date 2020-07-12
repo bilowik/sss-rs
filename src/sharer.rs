@@ -118,8 +118,8 @@ impl Sharer {
         Ok(())
     }
 
-    /// Shares all the shares to separate files for distribution.This is a wrapper for the $share
-    /// function.
+    /// Shares all the shares to separate files for distribution.This is a wrapper for the 
+    /// [share_to_writeables] function.
     ///
     /// Format: **dir**/**stem**.s<share_number>
     ///
