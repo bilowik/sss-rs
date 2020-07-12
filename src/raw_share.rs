@@ -5,15 +5,7 @@ use crypto::sha3::Sha3;
 use crypto::digest::Digest;
 use rand::seq::SliceRandom;
 use rand_chacha::ChaChaRng;
-use lazy_static::lazy_static;
 
-
-lazy_static! {
-    //pub static ref DEFAULT_PRIME: i64 = (2i64).pow(61) - 1; choosing a smaller prime
-    pub static ref DEFAULT_PRIME: i64 = 4294967311;
-    pub static ref CO_MIN: i64 = 2i64.pow(2);
-    pub static ref CO_MAX: i64 = 2i64.pow(31); 
-}
 
 
 /// See $create_shares_from_secret for documentation
