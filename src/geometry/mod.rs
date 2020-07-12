@@ -1,10 +1,8 @@
-#[allow(dead_code)]
 pub mod fraction;
 pub mod polynomial;
 pub mod point;
 pub mod utils;
 pub mod term;
-#[allow(dead_code)]
 pub mod galois_polynomial;
 
 // Re-export the modules contents into this module
