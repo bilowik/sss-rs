@@ -4,7 +4,7 @@ use crypto::sha3::Sha3;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Write, Cursor};
 use std::path::Path;
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
@@ -31,12 +31,34 @@ impl Sharer {
         }
     }
 
-    /// Shares all the shares to individual writeable destinations.
+    /// Creates the shares and places them into a Vec of Vecs.  
+    pub fn share(&self) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
+        let secret_len = self.secret.len()?;
+        if secret_len > std::usize::MAX as u64 {
+            return Err(Box::new(SharerError::SecretTooLarge(self.secret.len()?)));
+        }
+
+        let mut dests = Vec::with_capacity(self.shares_to_create as usize);
+        let share_vec = Vec::with_capacity(secret_len as usize);
+        for _ in 0..self.shares_to_create {
+            dests.push(Box::new(Cursor::new(share_vec.clone())) as Box<dyn Write>);
+        }
+
+        self.share_to_writables(&mut dests)?;
+        return unsafe {
+            Ok(std::mem::transmute(dests))
+        }
+    }
+
+    
+
+
+    /// Shares all the shares to individual writable destinations.
     ///
     /// This iterates through the
     /// secret and calculates the share lists in chunks and writes the shares to their respective
     /// destinations
-    pub fn share(&self, mut dests: &mut Vec<Box<dyn Write>>) -> Result<(), Box<dyn Error>> {
+    pub fn share_to_writables(&self, mut dests: &mut Vec<Box<dyn Write>>) -> Result<(), Box<dyn Error>> {
         // This just writes each corresponding share_list in share_lists to a dest in dests. This
         // is written here as a closure since it's used at two different points in this function
         let share_lists_to_dests = |lists: Vec<Vec<(u8, u8)>>,
@@ -116,7 +138,7 @@ impl Sharer {
             dests.push(Box::new(f) as Box<dyn Write>);
         }
 
-        self.share(&mut dests)
+        self.share_to_writables(&mut dests)
     }
 
     /// Tests the reconstruction of the shares as outputted via the $share_to_files function.
@@ -479,6 +501,7 @@ pub enum SharerError {
     NotEnoughWriteableDestinations(usize, u8),
     InvalidNumberOfBytesFromSource(u8),
     VerificationFailure(String, String),
+    SecretTooLarge(u64)
 }
 
 impl std::fmt::Display for SharerError {
@@ -499,7 +522,7 @@ impl std::fmt::Display for SharerError {
             ),
             SharerError::NotEnoughWriteableDestinations(given, needed) => write!(
                 f,
-                "Need {} writeable destinations for shares, only given {}",
+                "Need {} writable destinations for shares, only given {}",
                 needed, given
             ),
             SharerError::InvalidNumberOfBytesFromSource(bytes) => write!(
@@ -513,6 +536,11 @@ impl std::fmt::Display for SharerError {
 Original Hash: {}
 Calculated Hash: {}",
                 original_hash, calculated_hash
+            ),
+            SharerError::SecretTooLarge(secret_len) => write!(
+                f,
+                "Cannot fit secret into a Vec since it exceeds usize max. Secret length: {}",
+                secret_len
             ),
         }
     }
