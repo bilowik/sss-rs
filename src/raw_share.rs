@@ -66,10 +66,6 @@ pub fn create_shares_from_secret(secret: u8, shares_required: u8,
 /// are enough shares, a secret will be generated.
 /// @shares: The vector of shares that are used to regenerate the polynomial and finding the
 ///     secret. @shares.len() must be >= @shares_needed, else this will return an error.
-/// @prime: The original prime used to generate the shares. No guarantees are made that this prime
-///     is indeed the original prime, this must be kept from when the shares were generated. This
-///     value is also not checked to be prime, which must be done outside this function for
-///     efficieny.
 ///
 /// This will return an error if @shares.len() < shares_needed.
 pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
