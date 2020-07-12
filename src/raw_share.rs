@@ -48,15 +48,10 @@ pub fn create_shares_from_secret_custom_rng(secret: u8, shares_required: u8, sha
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data. 
 /// @secret: The secret value that is to be split into shares
-/// @prime: The prime number that is used to generate a finite field to increase security. This is
-///     not checked to be prime, so no errors will be reported if this value isn't prime, which
-///     must be done outside this function for efficiency. 
 /// @shares_required: The number of shares required to recreate the secret
 /// @shares_to_create: The number of shares to create, so any number 'x' shares from the total 'y'
 ///     shares are enough to recreate the secret. If < shares_required, it's automatically bumped
 ///     up.
-/// @co_max_bits: The maximum number of bits for the randomly generated coefficients of the polynomial
-///     hide the secret. If @co_max_bits == 0, this function will panic.
 ///
 /// Return: This function will return Ok<Vec<(u8, u8)>> upon success. 
 pub fn create_shares_from_secret(secret: u8, shares_required: u8, 
