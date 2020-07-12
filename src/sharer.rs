@@ -278,7 +278,6 @@ impl std::iter::Iterator for SecretIterator {
 pub enum Secret {
     InMemory(Vec<u8>),
     InFile(String),
-    //Other(Box<dyn Read>), to be implemented soon
 }
 
 impl Secret {
