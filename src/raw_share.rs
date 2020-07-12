@@ -72,7 +72,7 @@ pub fn create_shares_from_secret(
 /// If there are enough shares, a secret will be generated.
 ///
 /// **shares:** The vector of shares that are used to regenerate the polynomial and finding the
-///     secret. @shares.len() must be >= @shares_needed, else this will return an error.
+///     secret. **shares**.len() must be >= **shares_needed**, else this will return an error.
 ///
 /// This will return an error if **shares.len() < shares_needed**.
 pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
@@ -137,7 +137,7 @@ pub fn create_share_lists_from_secrets(
     )
 }
 
-/// This is a wrapper around @reconstruct_secret that iterates over each Vec of shares and
+/// This is a wrapper around [reconstruct_secret] that iterates over each Vec of shares and
 /// reconstructs their respective byte of the secret.
 ///
 /// It expects the shares to be in this format since this is how they are distributed.
@@ -150,7 +150,7 @@ pub fn create_share_lists_from_secrets(
 /// **share_lists:** A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
 ///     of the secret.
 ///
-/// ... For the rest of the arguments, see @reconstruct_secret
+/// ... For the rest of the arguments, see [reconstruct_secret]
 pub fn reconstruct_secrets_from_share_lists(
     share_lists: Vec<Vec<(u8, u8)>>,
 ) -> Result<Vec<u8>, Error> {
