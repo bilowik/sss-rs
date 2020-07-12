@@ -119,7 +119,7 @@ impl Sharer {
     }
 
     /// Shares all the shares to separate files for distribution.This is a wrapper for the 
-    /// [share_to_writeables] function.
+    /// [share_to_writables] function.
     ///
     /// Format: **dir**/**stem**.s<share_number>
     ///
