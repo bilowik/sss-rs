@@ -1,11 +1,11 @@
 use crate::raw_share::*;
 use crypto::digest::Digest;
 use crypto::sha3::Sha3;
-use std::convert::TryFrom;
+use std::convert::{TryFrom};
 use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write, Cursor};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
@@ -133,7 +133,7 @@ impl Sharer {
     /// **dir:** The directory to output the shares to.
     ///
     /// If **dir** isn't valid, the LAST invalid destination file's error is returned.
-    pub fn share_to_files(&self, dir: &str, stem: &str) -> Result<(), Box<dyn Error>> {
+    pub fn share_to_files<T: AsRef<Path>>(&self, dir: T, stem: &str) -> Result<(), Box<dyn Error>> {
         let file_paths = generate_share_file_paths(dir, stem, self.shares_to_create);
 
         let mut dests: Vec<Box<dyn Write>> = Vec::with_capacity(self.shares_to_create as usize);
@@ -149,21 +149,26 @@ impl Sharer {
     /// Tests the reconstruction of the shares as outputted via the $share_to_files function.
     ///
     /// **dir:** The directory to output the temporary shares. Default is the current dir
-    pub fn test_reconstruction_file(&self, dir: Option<&str>) -> Result<(), Box<dyn Error>> {
-        let default_dir = "./";
-        let dir = match dir {
-            Some(dir_str) => dir_str,
-            None => default_dir,
+    pub fn test_reconstruction_file<T: AsRef<Path>>(&self, dir: Option<T>) -> Result<(), Box<dyn Error>> {
+        let default_dir = Path::new("./");
+        let dir: PathBuf = if let Some(dir) = dir {
+            dir.as_ref().to_path_buf()
+        }
+        else {
+            default_dir.to_path_buf()
         };
+
+    
+
         let stem = ".tmp_share_file";
 
         let mut recon_secret = Secret::point_at_file(".tmp_secret_recon");
 
-        self.share_to_files(dir, stem)?;
-        recon_secret.reconstruct_from_files(dir, stem, self.shares_required)?;
+        self.share_to_files(&dir, stem)?;
+        recon_secret.reconstruct_from_files(&dir, stem, self.shares_required)?;
 
         // Cleanup
-        for path in generate_share_file_paths(dir, stem, self.shares_required) {
+        for path in generate_share_file_paths(&dir, stem, self.shares_required) {
             std::fs::remove_file(path).ok();
         }
 
@@ -301,10 +306,14 @@ impl std::iter::Iterator for SecretIterator {
 /// you can set it to reconstruct into
 /// a Vec by setting it to InMemory, or you can set it to output to a file.
 /// For sharing, you can input a secret to be shared, either a file or a vec of bytes.
+///
+/// For example, setting it to empty in memory, and then reconstructing it, will place 
+/// the reconstructed value in memory, whereas setting it to a file will place it 
+/// in the path of the given file.
 #[derive(Debug)]
 pub enum Secret {
     InMemory(Vec<u8>),
-    InFile(String),
+    InFile(PathBuf),
 }
 
 impl Secret {
@@ -320,8 +329,8 @@ impl Secret {
 
     /// (u8, u8)s the secret to a file. This file can either be a source for the secret, or an output
     /// file for reconstructing a secret
-    pub fn point_at_file(path: &str) -> Self {
-        Secret::InFile(String::from(path))
+    pub fn point_at_file<T: Into<PathBuf>>(path: T) -> Self {
+        Secret::InFile(path.into())
     }
 
     /// Attempts to get the length of the Secret.
@@ -378,6 +387,14 @@ impl Secret {
     /// (likely a read error if Secret was a file)
     pub fn verify(&self, hash: &[u8]) -> Result<bool, Box<dyn Error>> {
         Ok(self.calculate_hash()? == hash.to_vec())
+    }
+
+    /// Reconstructs a secret from a given list of shares.
+    pub fn reconstruct(&mut self, srcs: Vec<Vec<u8>>) -> Result<(), Box<dyn Error>> {
+        let src_len = srcs[0].len() as u64;
+        let mut srcs = srcs.into_iter()
+                           .map(|share| Box::new(Cursor::new(share)) as Box<dyn Read>).collect();
+        self.reconstruct_from_srcs(&mut srcs, src_len)
     }
 
     /// Reconstructs a secret from a given list of srcs. The srcs should all read the same number
@@ -474,13 +491,13 @@ impl Secret {
     }
 
     /// Performs the reconstruction of the shares from files with in the given **dir** with the give **stem**
-    pub fn reconstruct_from_files(
+    pub fn reconstruct_from_files<T: AsRef<Path>>(
         &mut self,
-        dir: &str,
+        dir: T,
         stem: &str,
         shares_required: u8,
     ) -> Result<(), Box<dyn Error>> {
-        let share_paths = generate_share_file_paths(dir, stem, shares_required);
+        let share_paths = generate_share_file_paths(&dir, stem, shares_required);
         let share_files: Vec<Result<File, Box<dyn Error>>> = share_paths
             .into_iter()
             .map(|path| File::open(path).map_err(|e| Box::new(e) as Box<dyn Error>))
@@ -500,7 +517,7 @@ impl Secret {
             .map(|file| Box::new(file) as Box<dyn Read>)
             .collect();
 
-        let mut secret_path = Path::new(dir).to_path_buf();
+        let mut secret_path = dir.as_ref().to_path_buf();
         secret_path.push(stem);
 
         self.reconstruct_from_srcs(&mut share_files, len)
@@ -566,8 +583,8 @@ impl Error for SharerError {}
 
 // Generates paths for the shares with in given dir with a given stem.
 // It is assumed that dir is a valid directory, no checks are done.
-fn generate_share_file_paths(dir: &str, stem: &str, num_files: u8) -> Vec<String> {
-    let mut path_buf = Path::new(dir).to_path_buf();
+fn generate_share_file_paths<T: AsRef<Path>>(dir: T, stem: &str, num_files: u8) -> Vec<String> {
+    let mut path_buf = dir.as_ref().to_path_buf();
     let mut generated_paths: Vec<String> = Vec::with_capacity(num_files as usize);
 
     for i in 0..num_files {
