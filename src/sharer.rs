@@ -76,6 +76,11 @@ impl Sharer {
             Ok(())
         };
 
+        // Write out the x value to each dest that will be used for each following point
+        for (x_val, dest) in dests.into_iter().enumerate() {
+            dest.write(&[(x_val + 1) as u8])?;
+        }
+
         if dests.len() < (self.shares_to_create as usize) {
             // Not enough dests to share shares to
             return Err(Box::new(SharerError::NotEnoughWriteableDestinations(
@@ -388,22 +393,32 @@ impl Secret {
         };
 
         let get_shares = |num_bytes: usize,
-                          srcs: &mut Vec<Box<dyn Read>>|
+                          srcs: &mut Vec<Box<dyn Read>>,
+                          x_vals: &Vec<u8>|
          -> Result<Vec<Vec<(u8, u8)>>, Box<dyn Error>> {
             let mut segments: Vec<Vec<(u8, u8)>> = Vec::with_capacity(srcs.len());
 
             // Read in one segment size from each share
-            let mut segment_ctr: u8 = 1;
-            for src in srcs.into_iter() {
+            for (src, x_val) in srcs.into_iter().zip(x_vals) {
                 let mut buf: Vec<u8> = Vec::with_capacity(num_bytes as usize);
                 src.take(num_bytes as u64).read_to_end(&mut buf)?;
-                segments.push(to_points(buf, segment_ctr));
-                segment_ctr = segment_ctr + 1; // Keeps track of the x_values for each segment
+                segments.push(to_points(buf, *x_val));
             }
             Ok(segments)
         };
 
-        let src_len = u64::try_from((src_len as i64) - 64)?;
+        // First, get the first byte from each share, which is the x value for those shares
+        let mut buf = Vec::with_capacity(1);
+        let mut x_vals = Vec::with_capacity(srcs.len());
+        for src in srcs.into_iter() {
+            buf.clear();
+            src.take(1).read_to_end(&mut buf)?;
+            x_vals.push(buf[0]);
+        }
+
+
+        let src_len = u64::try_from((src_len as i64) - 64 - 1)?;
+        dbg!(&src_len);
         let segments_to_read = if src_len % (READ_SEGMENT_SIZE as u64) != 0 {
             (src_len / (READ_SEGMENT_SIZE as u64)) + 1
         } else {
@@ -423,7 +438,7 @@ impl Secret {
         // Skip the last segment for now since it includes the appended hash
         if segments_to_read > 0 {
             for _ in 0..(segments_to_read - 1) {
-                let segments = get_shares(READ_SEGMENT_SIZE, srcs)?;
+                let segments = get_shares(READ_SEGMENT_SIZE, srcs, &x_vals)?;
                 // Now segments has a segment from each share src, reconstruct the secret up to that
                 // point and write it to the destination
                 dest.write_all(reconstruct_secrets_from_share_lists(segments)?.as_slice())?;
@@ -434,13 +449,12 @@ impl Secret {
         // and write the computed secret into dest
         let remaining_bytes = (src_len % (READ_SEGMENT_SIZE as u64)) as usize;
         if remaining_bytes > 0 {
-            dbg!(remaining_bytes);
-            let last_segments = get_shares(remaining_bytes, &mut srcs)?;
+            let last_segments = get_shares(remaining_bytes, &mut srcs, &x_vals)?;
             dest.write_all(reconstruct_secrets_from_share_lists(last_segments)?.as_slice())?;
         }
 
         // Now read in the hash
-        let hash_segments = get_shares(512, &mut srcs)?;
+        let hash_segments = get_shares(512, &mut srcs, &x_vals)?;
         let recon_hash = reconstruct_secrets_from_share_lists(hash_segments)?;
 
         // Drop dest since if it is a file, we will be re-opening it to read from it to
