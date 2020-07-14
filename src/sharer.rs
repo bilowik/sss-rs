@@ -603,7 +603,6 @@ fn generate_share_file_paths<T: AsRef<Path>>(dir: T, stem: &str, num_files: u8) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::StdRng;
     use rand::seq::SliceRandom;
     use rand::thread_rng;
 
