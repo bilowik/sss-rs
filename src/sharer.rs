@@ -34,7 +34,7 @@ impl Sharer {
     /// Creates the shares and places them into a Vec of Vecs. This wraps around
     /// [share_to_writables].
     pub fn share(&self) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
-        let share_len = self.secret.len()? + 1 + 64 + 32000;
+        let share_len = self.secret.len()? + 1 + 64;
         if share_len > std::usize::MAX as u64 {
             return Err(Box::new(SharerError::SecretTooLarge(self.secret.len()?)));
         }
