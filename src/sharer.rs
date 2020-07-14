@@ -686,13 +686,22 @@ mod tests {
         let secret = vec![10, 20, 30, 50];
         let num_shares = 6;
         let num_shares_required = 3;
-        let sharer = Sharer::builder(Secret::InMemory(secret))
+        let sharer = Sharer::builder(Secret::InMemory(secret.clone()))
             .shares_required(num_shares_required)
             .shares_to_create(num_shares)
             .build()
             .unwrap();
         let mut shares = sharer.share().unwrap();
-        //shares.as_mut_slice().shuffle(&mut thread_rng());
+        dbg!(&shares);
+        shares.as_mut_slice().shuffle(&mut thread_rng());
+        dbg!(&shares);
+        let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
+        recon_secret.reconstruct(shares);
+        
+        match recon_secret {
+            Secret::InMemory(recon_secret_vec) => assert_eq!(secret, recon_secret_vec),
+            _ => panic!("This shouldn't run")
+        }
     }
 
 
