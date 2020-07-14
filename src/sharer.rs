@@ -691,7 +691,7 @@ mod tests {
         let mut shares = sharer.share().unwrap();
         shares.as_mut_slice().shuffle(&mut thread_rng());
         let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
-        recon_secret.reconstruct(shares);
+        recon_secret.reconstruct(shares).unwrap();
         
         match recon_secret {
             Secret::InMemory(recon_secret_vec) => assert_eq!(secret, recon_secret_vec),
