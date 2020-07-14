@@ -10,8 +10,6 @@ use std::path::{Path, PathBuf};
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
 
-pub const HI: usize = 32;
-
 /// Creates shares from a given secret. Shares to any suitable destination that implements Write
 /// and has conveinence functions for files. To instantiate, the [SharerBuilder] should be used.
 #[derive(Debug)]
