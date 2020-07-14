@@ -30,42 +30,49 @@ impl Sharer {
             ..Default::default()
         }
     }
-
+    
     /// Creates the shares and places them into a Vec of Vecs.  
+    /// TODO: Fix this, make this the main share function, and have share_to_writeables 
+    /// wrap around THIS
     pub fn share(&self) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
-        let secret_len = self.secret.len()?;
-        if secret_len > std::usize::MAX as u64 {
+        let share_len = self.secret.len()? + 1 + 64 + 32000;
+        if share_len > std::usize::MAX as u64 {
             return Err(Box::new(SharerError::SecretTooLarge(self.secret.len()?)));
         }
+        let share_len = share_len as usize;
 
         let mut dests = Vec::with_capacity(self.shares_to_create as usize);
-        let share_vec = Vec::with_capacity(secret_len as usize);
+        let share_vec: Vec<u8> = Vec::with_capacity(share_len);
         for _ in 0..self.shares_to_create {
-            dests.push(Box::new(Cursor::new(share_vec.clone())) as Box<dyn Write>);
+            let share_vec_clone = share_vec.clone();
+            dests.push(Box::new(share_vec_clone) as Box<dyn Write>);
         }
+
 
         self.share_to_writables(&mut dests)?;
-        return unsafe {
-            Ok(std::mem::transmute(dests))
-        }
+        unsafe {
+            Ok(dests.into_iter()
+               .map(|dest|  std::mem::transmute::<&Box<dyn Write>, &Box<Vec<u8>>>(&dest).to_vec()).collect())
+       }
+
+
+
     }
 
-    
-
-
+    /*
     /// Shares all the shares to individual writable destinations.
     ///
     /// This iterates through the
     /// secret and calculates the share lists in chunks and writes the shares to their respective
     /// destinations
-    pub fn share_to_writables(&self, mut dests: &mut Vec<Box<dyn Write>>) -> Result<(), Box<dyn Error>> {
+    pub an share(&self)) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
         // This just writes each corresponding share_list in share_lists to a dest in dests. This
         // is written here as a closure since it's used at two different points in this function
-        let share_lists_to_dests = |lists: Vec<Vec<(u8, u8)>>,
-                                    mut dests: &mut Vec<Box<dyn Write>>|
+        let share_lists_to_vecs = |lists: Vec<Vec<(u8, u8)>>,
+                                    dests: &mut Vec<Vec<u8>>|
          -> Result<(), Box<dyn Error>> {
             for (share_list, dest) in lists.into_iter().zip((&mut dests).into_iter()) {
-                dest.write_all(
+                dest.extend_from_slice(
                     share_list
                         .into_iter()
                         .map(|(_, y)| y)
@@ -116,6 +123,80 @@ impl Sharer {
         // The shares for the hash have been created, write them all to dests
         share_lists_to_dests(share_lists, &mut dests)?;
 
+        // Flush writes to all dests to ensure all bytes are written
+        for dest in (&mut dests).into_iter() {
+            dest.flush().ok();
+        }
+        Ok(())
+    }
+    */
+    
+
+
+    /// Shares all the shares to individual writable destinations.
+    ///
+    /// This iterates through the
+    /// secret and calculates the share lists in chunks and writes the shares to their respective
+    /// destinations
+    pub fn share_to_writables(&self, mut dests: &mut Vec<Box<dyn Write>>) -> Result<(), Box<dyn Error>> {
+        // This just writes each corresponding share_list in share_lists to a dest in dests. This
+        // is written here as a closure since it's used at two different points in this function
+        let share_lists_to_dests = |lists: Vec<Vec<(u8, u8)>>,
+                                    mut dests: &mut Vec<Box<dyn Write>>|
+         -> Result<(), Box<dyn Error>> {
+            for (share_list, dest) in lists.into_iter().zip((&mut dests).into_iter()) {
+                dbg!(share_list.len());
+                dest.write_all(
+                    share_list
+                        .into_iter()
+                        .map(|(_, y)| y)
+                        .collect::<Vec<u8>>()
+                        .as_slice(),
+                )?;
+            }
+            Ok(())
+        };
+
+        // Write out the x value to each dest that will be used for each following point
+        for (x_val, dest) in dests.into_iter().enumerate() {
+            dest.write(&[(x_val + 1) as u8])?;
+        }
+
+        if dests.len() < (self.shares_to_create as usize) {
+            // Not enough dests to share shares to
+            return Err(Box::new(SharerError::NotEnoughWriteableDestinations(
+                dests.len(),
+                self.shares_to_create,
+            )));
+        }
+        for secret_segment in (&self.secret).into_iter() {
+            // Return error if seret_segment is an error, or unwrap it if its ok. This can happen
+            // if the secret is a file and a reading error occured during iteration
+            let secret_segment = secret_segment?;
+
+            if secret_segment.len() > 0 {
+
+                let share_lists = create_share_lists_from_secrets(
+                    secret_segment.as_slice(),
+                    self.shares_required,
+                    self.shares_to_create,
+                    None
+                )?;
+                share_lists_to_dests(share_lists, &mut dests)?;
+            }
+
+            std::mem::drop(secret_segment); // ensure the memory DOES get dropped
+        }
+
+        // Now that all of the shares have been written to, calculate the hash and share the hash
+        // to the dests
+        let hash: Vec<u8> = self.secret.calculate_hash()?.to_vec();
+        let share_lists =
+            create_share_lists_from_secrets(&hash, self.shares_required, self.shares_to_create, None)?;
+
+        // The shares for the hash have been created, write them all to dests
+        share_lists_to_dests(share_lists, &mut dests)?;
+        
         // Flush writes to all dests to ensure all bytes are written
         for dest in (&mut dests).into_iter() {
             dest.flush().ok();
@@ -599,6 +680,9 @@ fn generate_share_file_paths<T: AsRef<Path>>(dir: T, stem: &str, num_files: u8) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::rngs::StdRng;
+    use rand::seq::SliceRandom;
+    use rand::thread_rng;
 
     #[test]
     fn basic_share_reconstruction() {
@@ -671,4 +755,20 @@ mod tests {
             _ => panic!("Not both in memory"),
         }
     }
+
+    #[test]
+    fn shuffled_share_recon() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 6;
+        let num_shares_required = 3;
+        let sharer = Sharer::builder(Secret::InMemory(secret))
+            .shares_required(num_shares_required)
+            .shares_to_create(num_shares)
+            .build()
+            .unwrap();
+        let mut shares = sharer.share().unwrap();
+        //shares.as_mut_slice().shuffle(&mut thread_rng());
+    }
+
+
 }
