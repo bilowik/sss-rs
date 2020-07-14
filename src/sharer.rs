@@ -70,7 +70,6 @@ impl Sharer {
                                     mut dests: &mut Vec<Box<dyn Write>>|
          -> Result<(), Box<dyn Error>> {
             for (share_list, dest) in lists.into_iter().zip((&mut dests).into_iter()) {
-                dbg!(share_list.len());
                 dest.write_all(
                     share_list
                         .into_iter()
@@ -441,7 +440,6 @@ impl Secret {
 
 
         let src_len = u64::try_from((src_len as i64) - 64 - 1)?;
-        dbg!(&src_len);
         let segments_to_read = if src_len % (READ_SEGMENT_SIZE as u64) != 0 {
             (src_len / (READ_SEGMENT_SIZE as u64)) + 1
         } else {
@@ -692,9 +690,7 @@ mod tests {
             .build()
             .unwrap();
         let mut shares = sharer.share().unwrap();
-        dbg!(&shares);
         shares.as_mut_slice().shuffle(&mut thread_rng());
-        dbg!(&shares);
         let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
         recon_secret.reconstruct(shares);
         
