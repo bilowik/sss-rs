@@ -5,19 +5,6 @@ An implementation of a secret sharing scheme in Rust.
 This is not meant to be a serious/optimized implementation, it's more of a fun project to further
 my Rust knowledge.
 
-# Some things to note:
- - Finite field arithmetic has been reimplemented with GF(256) vs modulo a prime, however this has lead to
-   a decrease in Share speed by a factor of 4 (since we are working on bytes vs u32). Reconstruction speed
-   is surprisingly marginally faster? Hooray! Also secret sizes are now equal to the original file size 
-   rather than twice the size, which is another win!
-   	- This also comes with a vast number of other improvements as well, and prevents several major issues
-		- An overflow could occur when calculating the y-value when the number of shares exceeded 10
-			- Shares are now only limited by u8, so [2, 255] 
-		- Excess bytes that don't fit into a u32 did not effectively have their polynomials hidden via
-			finite field arithmetic since the point sizes would always be below the prime
- - While the example only showcases File's as input, but a more general method is available that 
-   accepts any Readable sources, as well as Writeable dest for sharing.
-   	- Note: Generic Writeble secret destination for reconstruction is planned for 0.6.0
 
 # New Example with the current API
 ```
@@ -30,9 +17,10 @@ let sharer = Sharer::builder(secret)
 	.shares_to_create(num_shares)// Default is 3 if not explicitly set
 	.build()
 	.unwrap();
-sharer.share_to_files(dir, stem).unwrap();
-let recon = Sharer::reconstructor(dir, stem, num_shares).unwrap();
-assert_eq!(secret, *recon_secret);
+let shares = sharer.share().unwrap();
+let mut recon = Secret::empty_in_memory();
+recon.reconstruct(shares);
+assert_eq!(secret, recon);
 
 
 ```
