@@ -20,7 +20,11 @@ let sharer = Sharer::builder(secret)
 let shares = sharer.share().unwrap();
 let mut recon = Secret::empty_in_memory();
 recon.reconstruct(shares);
-assert_eq!(secret, recon);
+match recon {
+	Secret::InMemory(secret_recon) => assert_eq!(secret, recon),
+	_ => (),
+}
+
 
 
 ```
