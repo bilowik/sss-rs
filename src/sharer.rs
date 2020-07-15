@@ -524,6 +524,33 @@ impl Secret {
 
         self.reconstruct_from_srcs(&mut share_files, len)
     }
+
+    /// Unwrap and return the inner vec.
+    ///
+    /// This will panic if the underlying secret is InFile.
+    pub fn unwrap_vec(self) -> Vec<u8> {
+        self.try_unwrap_vec().unwrap()
+    }
+
+    /// Unwrap and return the inner vec.
+    ///
+    /// Returns None if the inner value is a path.
+    pub fn try_unwrap_vec(self) -> Option<Vec<u8>> {
+        match self {
+            Secret::InMemory(secret) => Some(secret),
+            _ => None
+        }
+    }
+
+    /// Unwrap if InMemory, or read into a Vec if it is InFile.
+    ///
+    /// This will return an Error if the file length is too large to fit into a Vec
+    pub fn unwrap_to_vec(self) -> Result<Vec<u8>, Box<dyn Error>> {
+        match self {
+            Secret::InMemory(secret) => Ok(secret),
+            Secret::InFile(path) => std::fs::read(path).map_err(|e| e.into())
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
