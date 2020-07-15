@@ -525,29 +525,64 @@ impl Secret {
         self.reconstruct_from_srcs(&mut share_files, len)
     }
 
-    /// Unwrap and return the inner vec.
+    /// Unwrap and return the inner vec, consuming the secret.
     ///
     /// This will panic if the underlying secret is InFile.
-    pub fn unwrap_vec(self) -> Vec<u8> {
+    pub fn unwrap_vec(mut self) -> Vec<u8> {
         self.try_unwrap_vec().unwrap()
     }
 
-    /// Unwrap and return the inner vec.
+    /// Unwrap and clone the inner vec.
     ///
-    /// Returns None if the inner value is a path.
-    pub fn try_unwrap_vec(self) -> Option<Vec<u8>> {
+    /// This will panic if the underlying secret is InFile
+    pub fn unwrap_vec_clone(&self) -> Vec<u8> {
+        self.try_unwrap_vec_clone().unwrap()
+    }
+
+    /// Try to unwrap and return the inner vec.
+    ///
+    /// This does not consume self, since it may return None.
+    ///
+    /// If the secret is returned, an empty vec is put in its place.
+    ///
+    /// Returns None if the inner value is a path, else returns the secret.
+    pub fn try_unwrap_vec(&mut self) -> Option<Vec<u8>> {
         match self {
-            Secret::InMemory(secret) => Some(secret),
+            Secret::InMemory(ref mut secret) => Some(std::mem::replace(secret, Vec::new())),
+            _ => None
+        }
+    }
+    
+    /// Try to unwrap and clone the inner vec.
+    ///
+    /// This does not consume self since it may return None.
+    ///
+    /// Returns None if the inner value is a path, else returns the secret.
+    pub fn try_unwrap_vec_clone(&self) -> Option<Vec<u8>> {
+        match self {
+            Secret::InMemory(ref secret) => Some(secret.clone()),
             _ => None
         }
     }
 
     /// Unwrap if InMemory, or read into a Vec if it is InFile.
     ///
-    /// This will return an Error if the file length is too large to fit into a Vec
+    /// This will return an Error if the file length is too large to fit into a Vec,
+    /// or if the file path is invalid.
     pub fn unwrap_to_vec(self) -> Result<Vec<u8>, Box<dyn Error>> {
         match self {
             Secret::InMemory(secret) => Ok(secret),
+            Secret::InFile(path) => std::fs::read(path).map_err(|e| e.into())
+        }
+    }
+    
+    /// Unwrap and clone if InMemory, or read into a Vec if it is InFile.
+    ///
+    /// This will return an Error if the file length is too large to fit into a Vec,
+    /// or if the file path is invalid.
+    pub fn unwrap_to_vec_clone(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        match self {
+            Secret::InMemory(ref secret) => Ok(secret.clone()),
             Secret::InFile(path) => std::fs::read(path).map_err(|e| e.into())
         }
     }
