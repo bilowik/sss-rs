@@ -11,6 +11,7 @@
  - Simplified Sharer Usage:
  	- Made base share/reconstruct functions use Vec's
 	- Path-related args now properly ask for AsRef<Path>
+	- Added many convenient unwrap methods for Secret to get the bytes.
  - MAJOR bug fix regarding Sharer share reconstruction, if they were to be reconstructed out of order,
    or if more shares were generated than needed and only the required but out-of-order shares were 
    used, would cause incorrect reconstruction.
