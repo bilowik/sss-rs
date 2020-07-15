@@ -708,34 +708,19 @@ mod tests {
 
     #[test]
     fn zero_test() {
-        let dir = "./";
-        let stem = "zero_test";
         let num_shares = 3;
         let secret: Vec<u8> = vec![0];
-        let sharer = Sharer::builder(Secret::InMemory(secret))
+        let sharer = Sharer::builder(Secret::InMemory(secret.clone()))
             .shares_required(num_shares)
             .shares_to_create(num_shares)
             .build()
             .unwrap();
-        sharer.share_to_files(dir, stem).unwrap();
+        let shares = sharer.share().unwrap();
         let mut recon = Secret::empty_in_memory();
-        recon.reconstruct_from_files(dir, stem, num_shares).unwrap();
+        recon.reconstruct(shares).unwrap();
 
-        // Cleanup
-        for path in generate_share_file_paths(dir, stem, num_shares) {
-            match std::fs::remove_file(&path) {
-                Ok(_) => (),
-                Err(e) => {
-                    println!("Couldn't cleanup file '{}': {}", &path, e);
-                }
-            }
-        }
-        match (sharer.get_secret(), &recon) {
-            (Secret::InMemory(orig), Secret::InMemory(recon)) => {
-                assert_eq!(orig, recon);
-            }
-            _ => panic!("Not both in memory"),
-        }
+        assert_eq!(secret, recon.unwrap_vec());
+
     }
 
     #[test]
@@ -753,10 +738,7 @@ mod tests {
         let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
         recon_secret.reconstruct(shares[0..3].to_vec()).unwrap();
         
-        match recon_secret {
-            Secret::InMemory(recon_secret_vec) => assert_eq!(secret, recon_secret_vec),
-            _ => panic!("This shouldn't run")
-        }
+        assert_eq!(secret, recon_secret.unwrap_vec());
     }
 
 
