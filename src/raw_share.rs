@@ -145,6 +145,66 @@ pub fn reconstruct_secrets_from_share_lists(
     Ok(secrets)
 }
 
+/// Wrapper around its corresponding share function, this simply uses the [reduce_share]
+/// function to reduce the size of the share.
+///
+/// Since each share is a collection of points, (u8, u8) where the x-value is identical
+/// throughout the share, we can pull out the X value, which halves the size of the
+/// share.
+///
+/// See [create_share_lists_from_secrets] for more documentation.
+pub fn create_share_lists_from_secrets_no_points(
+    secret: &[u8],
+    shares_required: u8,
+    shares_to_create: u8,
+    rand: Option<&mut dyn RngCore>,
+) -> Result<Vec<Vec<u8>>, Error> {
+    Ok(
+        create_share_lists_from_secrets(secret, shares_required, shares_to_create, rand)?
+            .into_iter()
+            .map(|share| reduce_share(share))
+            .map(|(x, ys)| {
+                let mut new_share = Vec::with_capacity(ys.len() + 1);
+                new_share.push(x);
+                new_share.extend_from_slice(ys.as_slice());
+                new_share
+            })
+            .collect(),
+    )
+}
+
+/// Wrapper around its corresponding share function, it simply uses the [expand_share]
+/// function to reconstruct the secret from shares created using 
+/// [create_share_lists_from_secrets_no_points]
+///
+/// See [reconstruct_secrets_from_share_lists] for more documentation.
+pub fn reconstruct_secrets_from_share_lists_no_points(
+    share_lists: Vec<(u8, Vec<u8>)>,
+) -> Result<Vec<u8>, Error> {
+    Ok(reconstruct_secrets_from_share_lists(
+        share_lists
+            .into_iter()
+            .map(|x_val, share| share.into_iter().map(|y| (x_val, y)).collect())
+            .collect(),
+    ))
+}
+
+/// This 'compresses' a share by pulling out it's X value from each point since
+/// they will be identical.
+///
+/// This allows for more optimal storage of the share.
+pub fn reduce_share(share: Vec<(u8, u8)>) -> (u8, Vec<u8>) {
+    (share[0].0, share.into_iter().map(|(_, y)| y).collect())
+}
+
+/// This 'decompresses' a share by taking the x value and adding it to each
+/// y value.
+///
+/// This allows for the share to be properly reconstructed.
+pub fn expand_share(x_value: u8, share: Vec<u8>) -> Vec<(u8, u8)> {
+    share.into_iter().map(|y| (x_value, y)).collect()
+}
+
 /// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
 ///
 /// **matrix:** The matrix to be transposed, must be a valid matrix else an error is returned.
