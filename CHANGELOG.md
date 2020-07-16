@@ -1,3 +1,7 @@
+## sss-rs 0.7.1 07/16/2020
+ - Update README.md to reflect recent 0.7.0 changes
+
+
 ## sss-rs 0.7.0 07/14/2020
  - A LOT of cleanup:
  	- Documentation formatting cleaned up and made more consistent
