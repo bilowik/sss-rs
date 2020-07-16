@@ -1,4 +1,4 @@
 mod geometry;
-pub mod sharer;
-pub mod raw_share;
+pub mod wrapped_sharing;
+pub mod basic_sharing;
 mod utils;
