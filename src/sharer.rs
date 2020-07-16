@@ -168,7 +168,7 @@ impl Secret {
                 let segments = get_shares(READ_SEGMENT_SIZE, srcs, &x_vals)?;
                 // Now segments has a segment from each share src, reconstruct the secret up to that
                 // point and write it to the destination
-                dest.write_all(reconstruct_secrets_from_share_lists(segments)?.as_slice())?;
+                dest.write_all(reconstruct_secrets(segments)?.as_slice())?;
             }
         }
 
@@ -177,12 +177,12 @@ impl Secret {
         let remaining_bytes = (src_len % (READ_SEGMENT_SIZE as u64)) as usize;
         if remaining_bytes > 0 {
             let last_segments = get_shares(remaining_bytes, &mut srcs, &x_vals)?;
-            dest.write_all(reconstruct_secrets_from_share_lists(last_segments)?.as_slice())?;
+            dest.write_all(reconstruct_secrets(last_segments)?.as_slice())?;
         }
 
         // Now read in the hash
         let hash_segments = get_shares(512, &mut srcs, &x_vals)?;
-        let recon_hash = reconstruct_secrets_from_share_lists(hash_segments)?;
+        let recon_hash = reconstruct_secrets(hash_segments)?;
 
         // Drop dest since if it is a file, we will be re-opening it to read from it to
         // calculate the hash. Ensure output is flushed
@@ -388,7 +388,7 @@ pub fn share_to_writables(secret: Secret, mut dests: &mut Vec<Box<dyn Write>>, s
 
         if secret_segment.len() > 0 {
 
-            let share_lists = create_share_lists_from_secrets(
+            let share_lists = from_secrets(
                 secret_segment.as_slice(),
                 shares_required,
                 shares_to_create,
@@ -404,7 +404,7 @@ pub fn share_to_writables(secret: Secret, mut dests: &mut Vec<Box<dyn Write>>, s
     // to the dests
     let hash: Vec<u8> = secret.calculate_hash()?.to_vec();
     let share_lists =
-        create_share_lists_from_secrets(&hash, shares_required, shares_to_create, None)?;
+        from_secrets(&hash, shares_required, shares_to_create, None)?;
 
     // The shares for the hash have been created, write them all to dests
     share_lists_to_dests(share_lists, &mut dests)?;

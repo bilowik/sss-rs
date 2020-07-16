@@ -15,7 +15,7 @@ use rand::{Rng, RngCore, SeedableRng};
 /// The default is StdRng::from_entropy()
 ///
 /// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
-pub fn create_shares_from_secret(
+pub fn from_secret(
     secret: u8,
     shares_required: u8,
     shares_to_create: u8,
@@ -65,7 +65,7 @@ pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
     GaloisPolynomial::get_y_intercept_from_points(shares.as_slice())
 }
 
-/// This is a wrapper around [create_shares_from_secret]
+/// This is a wrapper around [from_secret]
 /// that loops through the *secret* slice and secret.
 ///
 /// The format this returns the secrets in is, since this is how they would be
@@ -80,10 +80,10 @@ pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
 /// **rand:** The rng source for the generated coefficients in the sharing process.
 /// The default is StdRng::from_entropy()
 ///
-/// *For the rest of the arguments, see [create_shares_from_secret]*
+/// *For the rest of the arguments, see [from_secret]*
 ///
 /// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
-pub fn create_share_lists_from_secrets(
+pub fn from_secrets(
     secret: &[u8],
     shares_required: u8,
     shares_to_create: u8,
@@ -106,7 +106,7 @@ pub fn create_share_lists_from_secrets(
     let mut list_of_share_lists: Vec<Vec<(u8, u8)>> = Vec::with_capacity(secret.len());
 
     for s in secret {
-        match create_shares_from_secret(*s, shares_required, shares_to_create, Some(&mut rand)) {
+        match from_secret(*s, shares_required, shares_to_create, Some(&mut rand)) {
             Ok(shares) => {
                 // Now this list needs to be transposed:
                 list_of_share_lists.push(shares);
@@ -134,7 +134,7 @@ pub fn create_share_lists_from_secrets(
 ///     of the secret.
 ///
 /// *For the rest of the arguments, see [reconstruct_secret]*
-pub fn reconstruct_secrets_from_share_lists(
+pub fn reconstruct_secrets(
     share_lists: Vec<Vec<(u8, u8)>>,
 ) -> Result<Vec<u8>, Error> {
     let mut secrets: Vec<u8> = Vec::with_capacity(share_lists[0].len());
@@ -159,15 +159,15 @@ pub fn reconstruct_secrets_from_share_lists(
 /// The 'no_points' functions are to be used exclusively with eachother and are not
 /// meant to mix with the other raw_share functions and vice-versa.
 ///
-/// See [create_share_lists_from_secrets] for more documentation.
-pub fn create_share_lists_from_secrets_no_points(
+/// See [from_secrets] for more documentation.
+pub fn from_secrets_no_points(
     secret: &[u8],
     shares_required: u8,
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<u8>>, Error> {
     Ok(
-        create_share_lists_from_secrets(secret, shares_required, shares_to_create, rand)?
+        from_secrets(secret, shares_required, shares_to_create, rand)?
             .into_iter()
             .map(|share| reduce_share(share))
             .map(|(x, ys)| {
@@ -182,7 +182,7 @@ pub fn create_share_lists_from_secrets_no_points(
 
 /// Wrapper around its corresponding share function, it simply uses the [expand_share]
 /// function to reconstruct the secret from shares created using 
-/// [create_share_lists_from_secrets_no_points]
+/// [from_secrets_no_points]
 ///
 /// The format the shares are to be in are as follows:
 ///
@@ -191,11 +191,11 @@ pub fn create_share_lists_from_secrets_no_points(
 /// The 'no_points' functions are to be used exclusively with eachother and are not
 /// meant to mix with the other raw_share functions and vice-versa.
 ///
-/// See [reconstruct_secrets_from_share_lists] for more documentation.
-pub fn reconstruct_secrets_from_share_lists_no_points(
+/// See [reconstruct_secrets] for more documentation.
+pub fn reconstruct_secrets_no_points(
     share_lists: Vec<Vec<u8>>,
 ) -> Result<Vec<u8>, Error> {
-    reconstruct_secrets_from_share_lists(
+    reconstruct_secrets(
         share_lists
             .into_iter()
             .map(|share| expand_share(share))
@@ -319,7 +319,7 @@ mod tests {
         */
 
         let shares =
-            create_shares_from_secret(secret, shares_required, shares_to_create, None).unwrap();
+            from_secret(secret, shares_required, shares_to_create, None).unwrap();
 
         let secret_decrypted = reconstruct_secret(shares);
         assert_eq!(secret, secret_decrypted);
@@ -355,10 +355,10 @@ mod tests {
         let now = Instant::now();
 
         let share_lists =
-            create_share_lists_from_secrets(secret.as_bytes(), shares_required, shares_to_create)
+            from_secrets(secret.as_bytes(), shares_required, shares_to_create)
                 .unwrap();
 
-        let recon_secret_vec = reconstruct_secrets_from_share_lists(share_lists).unwrap();
+        let recon_secret_vec = reconstruct_secrets(share_lists).unwrap();
         let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
 
         let time_elap = now.elapsed().as_millis();
@@ -372,8 +372,8 @@ mod tests {
     fn no_points() {
         let secret = vec![10, 20, 30, 40, 50];
         let n = 3;
-        let shares = create_share_lists_from_secrets_no_points(&secret, n, n, None).unwrap();
-        let recon = reconstruct_secrets_from_share_lists_no_points(shares).unwrap();
+        let shares = from_secrets_no_points(&secret, n, n, None).unwrap();
+        let recon = reconstruct_secrets_no_points(shares).unwrap();
         assert_eq!(secret, recon);
     }
 
