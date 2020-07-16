@@ -1,4 +1,4 @@
-use crate::raw_share::*;
+use crate::basic_sharing::*;
 use crypto::digest::Digest;
 use crypto::sha3::Sha3;
 use std::convert::{TryFrom};
