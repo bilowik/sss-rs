@@ -372,7 +372,7 @@ mod tests {
     fn no_points() {
         let secret = vec![10, 20, 30, 40, 50];
         let n = 3;
-        let shares = create_share_lists_from_secrets_no_points(&secret, 3, 3, None).unwrap();
+        let shares = create_share_lists_from_secrets_no_points(&secret, n, n, None).unwrap();
         let recon = reconstruct_secrets_from_share_lists_no_points(shares).unwrap();
         assert_eq!(secret, recon);
     }
