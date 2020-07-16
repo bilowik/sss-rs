@@ -1,6 +1,6 @@
 [package]
 name = "sss-rs"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["Aaron Flores <aaronjflores962@gmail.com"]
 edition = "2018"
 description = "A purely functional (as in working) implementation of Shamir Secret Sharing"
@@ -25,8 +25,3 @@ hex = "0.4.0"
 env_logger = "0.7.0"
 log = "0.4.8"
 galois_2p8 = "0.1.1"
-
-[features]
-default = []
-file_tests = []
-benchmarks = []
