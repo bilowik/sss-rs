@@ -32,7 +32,7 @@ pub fn create_shares_from_secret(
     }
 
     // Use the given rng or if none was given, use from entropy
-    let mut shares: Vec<(u8, u8)> = Vec::new();
+    let mut shares: Vec<(u8, u8)> = Vec::with_capacity(shares_to_create);
     let mut share_poly = GaloisPolynomial::new();
 
     share_poly.set_coeff(Coeff(secret), 0);
@@ -137,7 +137,7 @@ pub fn create_share_lists_from_secrets(
 pub fn reconstruct_secrets_from_share_lists(
     share_lists: Vec<Vec<(u8, u8)>>,
 ) -> Result<Vec<u8>, Error> {
-    let mut secrets: Vec<u8> = Vec::with_capacity(share_lists.len());
+    let mut secrets: Vec<u8> = Vec::with_capacity(share_lists[0].len());
     let share_lists = transpose_vec_matrix(share_lists)?;
     for point_list in share_lists {
         secrets.push(reconstruct_secret(point_list));
