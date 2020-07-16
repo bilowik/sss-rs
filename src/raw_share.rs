@@ -32,7 +32,7 @@ pub fn create_shares_from_secret(
     }
 
     // Use the given rng or if none was given, use from entropy
-    let mut shares: Vec<(u8, u8)> = Vec::with_capacity(shares_to_create);
+    let mut shares: Vec<(u8, u8)> = Vec::with_capacity(shares_to_create as usize);
     let mut share_poly = GaloisPolynomial::new();
 
     share_poly.set_coeff(Coeff(secret), 0);
