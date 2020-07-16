@@ -152,6 +152,13 @@ pub fn reconstruct_secrets_from_share_lists(
 /// throughout the share, we can pull out the X value, which halves the size of the
 /// share.
 ///
+/// The format of the outputted shares are as follows:
+///
+/// (1-byte X-value),(N-byte share)
+///
+/// The 'no_points' functions are to be used exclusively with eachother and are not
+/// meant to mix with the other raw_share functions and vice-versa.
+///
 /// See [create_share_lists_from_secrets] for more documentation.
 pub fn create_share_lists_from_secrets_no_points(
     secret: &[u8],
@@ -177,16 +184,23 @@ pub fn create_share_lists_from_secrets_no_points(
 /// function to reconstruct the secret from shares created using 
 /// [create_share_lists_from_secrets_no_points]
 ///
+/// The format the shares are to be in are as follows:
+///
+/// (1-byte X-value),(N-byte share)
+///
+/// The 'no_points' functions are to be used exclusively with eachother and are not
+/// meant to mix with the other raw_share functions and vice-versa.
+///
 /// See [reconstruct_secrets_from_share_lists] for more documentation.
 pub fn reconstruct_secrets_from_share_lists_no_points(
-    share_lists: Vec<(u8, Vec<u8>)>,
+    share_lists: Vec<Vec<u8>>,
 ) -> Result<Vec<u8>, Error> {
-    Ok(reconstruct_secrets_from_share_lists(
+    reconstruct_secrets_from_share_lists(
         share_lists
             .into_iter()
-            .map(|x_val, share| share.into_iter().map(|y| (x_val, y)).collect())
+            .map(|share| expand_share(share))
             .collect(),
-    ))
+    )
 }
 
 /// This 'compresses' a share by pulling out it's X value from each point since
@@ -201,8 +215,9 @@ pub fn reduce_share(share: Vec<(u8, u8)>) -> (u8, Vec<u8>) {
 /// y value.
 ///
 /// This allows for the share to be properly reconstructed.
-pub fn expand_share(x_value: u8, share: Vec<u8>) -> Vec<(u8, u8)> {
-    share.into_iter().map(|y| (x_value, y)).collect()
+pub fn expand_share(share: Vec<u8>) -> Vec<(u8, u8)> {
+    let x_value = share[0];
+    share[1..].into_iter().map(|y| (x_value, *y)).collect()
 }
 
 /// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
@@ -352,4 +367,15 @@ mod tests {
 
         assert_eq!(secret, &recon_secret[..])
     }
+
+    #[test]
+    fn no_points() {
+        let secret = vec![10, 20, 30, 40, 50];
+        let n = 3;
+        let shares = create_share_lists_from_secrets_no_points(&secret, 3, 3, None).unwrap();
+        let recon = reconstruct_secrets_from_share_lists_no_points(shares).unwrap();
+        assert_eq!(secret, recon);
+    }
+
+
 }
