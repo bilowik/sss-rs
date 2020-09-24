@@ -101,6 +101,10 @@ impl Secret {
     }
 
     /// Reconstructs a secret from a given list of shares.
+    ///
+    /// **verify**: If true, a hash is assumed to exist at the end of the secret and will be used
+    ///             to verify secret reconstruction. NOTE: This will fail if the secret was not 
+    ///             shared with verify set to true.
     pub fn reconstruct(&mut self, srcs: Vec<Vec<u8>>, verify: bool) -> Result<(), Box<dyn Error>> {
         let src_len = srcs[0].len() as u64;
         let mut srcs = srcs.into_iter()
@@ -359,6 +363,9 @@ impl std::iter::Iterator for SecretIterator {
 /// This iterates through the
 /// secret and calculates the share lists in chunks and writes the shares to their respective
 /// destinations
+///
+/// **verify**: If true, a hash is calculated from the secret and placed at the end to be used 
+///             to verify reconstruction of the secret.
 pub fn share_to_writables(secret: Secret, mut dests: &mut Vec<Box<dyn Write>>, shares_required: u8, shares_to_create: u8, verify: bool) -> Result<(), Box<dyn Error>> {
     // This just writes each corresponding share_list in share_lists to a dest in dests. This
     // is written here as a closure since it's used at two different points in this function
