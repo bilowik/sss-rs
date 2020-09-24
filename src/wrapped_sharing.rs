@@ -101,11 +101,11 @@ impl Secret {
     }
 
     /// Reconstructs a secret from a given list of shares.
-    pub fn reconstruct(&mut self, srcs: Vec<Vec<u8>>) -> Result<(), Box<dyn Error>> {
+    pub fn reconstruct(&mut self, srcs: Vec<Vec<u8>>, verify: bool) -> Result<(), Box<dyn Error>> {
         let src_len = srcs[0].len() as u64;
         let mut srcs = srcs.into_iter()
                            .map(|share| Box::new(Cursor::new(share)) as Box<dyn Read>).collect();
-        self.reconstruct_from_srcs(&mut srcs, src_len)
+        self.reconstruct_from_srcs(&mut srcs, src_len, verify)
     }
 
     /// Reconstructs a secret from a given list of srcs. The srcs should all read the same number
@@ -115,6 +115,7 @@ impl Secret {
         &mut self,
         mut srcs: &mut Vec<Box<dyn Read>>,
         src_len: u64,
+        verify: bool
     ) -> Result<(), Box<dyn Error>> {
         let to_points = |vec: Vec<u8>, segment_num: u8| -> Vec<(u8, u8)> {
             vec.into_iter().map(|val| (segment_num, val)).collect()
@@ -144,8 +145,14 @@ impl Secret {
             x_vals.push(buf[0]);
         }
 
+        
+        let src_len = if verify {
+            u64::try_from((src_len as i64) - 64 - 1)?
+        }
+        else {
+            u64::try_from((src_len as i64) - 1)?
+        };
 
-        let src_len = u64::try_from((src_len as i64) - 64 - 1)?;
         let segments_to_read = if src_len % (READ_SEGMENT_SIZE as u64) != 0 {
             (src_len / (READ_SEGMENT_SIZE as u64)) + 1
         } else {
@@ -179,24 +186,24 @@ impl Secret {
             let last_segments = get_shares(remaining_bytes, &mut srcs, &x_vals)?;
             dest.write_all(reconstruct_secrets(last_segments)?.as_slice())?;
         }
-
-        // Now read in the hash
-        let hash_segments = get_shares(512, &mut srcs, &x_vals)?;
-        let recon_hash = reconstruct_secrets(hash_segments)?;
-
-        // Drop dest since if it is a file, we will be re-opening it to read from it to
-        // calculate the hash. Ensure output is flushed
-        dest.flush().ok();
-        std::mem::drop(dest);
-        if !self.verify(recon_hash.as_slice())? {
-            let calc_hash_hex = hex::encode(self.calculate_hash()?);
-            let orig_hash_hex = hex::encode(&recon_hash);
-            return Err(Box::new(SharerError::VerificationFailure(
-                orig_hash_hex,
-                calc_hash_hex,
-            )));
+        
+        if verify {
+            // Now read in the hash
+            let hash_segments = get_shares(512, &mut srcs, &x_vals)?;
+            let recon_hash = reconstruct_secrets(hash_segments)?;
+            // Drop dest since if it is a file, we will be re-opening it to read from it to
+            // calculate the hash. Ensure output is flushed
+            dest.flush().ok();
+            std::mem::drop(dest);
+            if !self.verify(recon_hash.as_slice())? {
+                let calc_hash_hex = hex::encode(self.calculate_hash()?);
+                let orig_hash_hex = hex::encode(&recon_hash);
+                return Err(Box::new(SharerError::VerificationFailure(
+                    orig_hash_hex,
+                    calc_hash_hex,
+                )));
+            }
         }
-
         Ok(())
     }
 
@@ -206,6 +213,7 @@ impl Secret {
         dir: T,
         stem: &str,
         shares_required: u8,
+        verify: bool
     ) -> Result<(), Box<dyn Error>> {
         let share_paths = generate_share_file_paths(&dir, stem, shares_required);
         let share_files: Vec<Result<File, Box<dyn Error>>> = share_paths
@@ -230,7 +238,7 @@ impl Secret {
         let mut secret_path = dir.as_ref().to_path_buf();
         secret_path.push(stem);
 
-        self.reconstruct_from_srcs(&mut share_files, len)
+        self.reconstruct_from_srcs(&mut share_files, len, verify)
     }
 
     /// Unwrap and return the inner vec, consuming the secret.
@@ -351,7 +359,7 @@ impl std::iter::Iterator for SecretIterator {
 /// This iterates through the
 /// secret and calculates the share lists in chunks and writes the shares to their respective
 /// destinations
-pub fn share_to_writables(secret: Secret, mut dests: &mut Vec<Box<dyn Write>>, shares_required: u8, shares_to_create: u8) -> Result<(), Box<dyn Error>> {
+pub fn share_to_writables(secret: Secret, mut dests: &mut Vec<Box<dyn Write>>, shares_required: u8, shares_to_create: u8, verify: bool) -> Result<(), Box<dyn Error>> {
     // This just writes each corresponding share_list in share_lists to a dest in dests. This
     // is written here as a closure since it's used at two different points in this function
     let share_lists_to_dests = |lists: Vec<Vec<(u8, u8)>>,
@@ -400,14 +408,16 @@ pub fn share_to_writables(secret: Secret, mut dests: &mut Vec<Box<dyn Write>>, s
         std::mem::drop(secret_segment); // ensure the memory DOES get dropped
     }
 
-    // Now that all of the shares have been written to, calculate the hash and share the hash
-    // to the dests
-    let hash: Vec<u8> = secret.calculate_hash()?.to_vec();
-    let share_lists =
-        from_secrets(&hash, shares_required, shares_to_create, None)?;
+    if verify {
+        // Now that all of the shares have been written to, calculate the hash and share the hash
+        // to the dests
+        let hash: Vec<u8> = secret.calculate_hash()?.to_vec();
+        let share_lists =
+            from_secrets(&hash, shares_required, shares_to_create, None)?;
 
-    // The shares for the hash have been created, write them all to dests
-    share_lists_to_dests(share_lists, &mut dests)?;
+        // The shares for the hash have been created, write them all to dests
+        share_lists_to_dests(share_lists, &mut dests)?;
+    }
     
     // Flush writes to all dests to ensure all bytes are written
     for dest in (&mut dests).into_iter() {
@@ -420,7 +430,7 @@ pub fn share_to_writables(secret: Secret, mut dests: &mut Vec<Box<dyn Write>>, s
 // avoid this.
 /// Creates the shares and places them into a Vec of Vecs. This wraps around
 /// [share_to_writables].
-pub fn share(secret: Secret, shares_required: u8, shares_to_create: u8) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
+pub fn share(secret: Secret, shares_required: u8, shares_to_create: u8, verify: bool) -> Result<Vec<Vec<u8>>, Box<dyn Error>> {
     let share_len = secret.len()? + 1 + 64;
     if share_len > std::usize::MAX as u64 {
         return Err(Box::new(SharerError::SecretTooLarge(secret.len()?)));
@@ -435,7 +445,7 @@ pub fn share(secret: Secret, shares_required: u8, shares_to_create: u8) -> Resul
     }
 
 
-    share_to_writables(secret, &mut dests, shares_required, shares_to_create)?;
+    share_to_writables(secret, &mut dests, shares_required, shares_to_create, verify)?;
     unsafe {
         Ok(dests.into_iter()
            .map(|dest| std::mem::transmute::<&Box<dyn Write>, &Box<Vec<u8>>>(&dest).to_vec()).collect())
@@ -455,7 +465,7 @@ pub fn share(secret: Secret, shares_required: u8, shares_to_create: u8) -> Resul
 /// **dir:** The directory to output the shares to.
 ///
 /// If **dir** isn't valid, the LAST invalid destination file's error is returned.
-pub fn share_to_files<T: AsRef<Path>>(secret: Secret, dir: T, stem: &str, shares_required: u8, shares_to_create: u8) -> Result<(), Box<dyn Error>> {
+pub fn share_to_files<T: AsRef<Path>>(secret: Secret, dir: T, stem: &str, shares_required: u8, shares_to_create: u8, verify: bool) -> Result<(), Box<dyn Error>> {
     let file_paths = generate_share_file_paths(dir, stem, shares_to_create);
 
     let mut dests: Vec<Box<dyn Write>> = Vec::with_capacity(shares_to_create as usize);
@@ -465,7 +475,7 @@ pub fn share_to_files<T: AsRef<Path>>(secret: Secret, dir: T, stem: &str, shares
         dests.push(Box::new(f) as Box<dyn Write>);
     }
 
-    share_to_writables(secret, &mut dests, shares_required, shares_to_create)
+    share_to_writables(secret, &mut dests, shares_required, shares_to_create, verify)
 }
 
 
@@ -557,12 +567,12 @@ mod tests {
         let stem = "basic_share_reconstruction_test";
         let num_shares = 2;
         let secret: Vec<u8> = vec![13, 240, 189];
-        share_to_files(Secret::InMemory(secret.clone()), dir, stem, num_shares, num_shares).unwrap();
+        share_to_files(Secret::InMemory(secret.clone()), dir, stem, num_shares, num_shares, true).unwrap();
 
         let mut recon = Secret::empty_in_memory();
 
         recon
-            .reconstruct_from_files(dir, stem, num_shares)
+            .reconstruct_from_files(dir, stem, num_shares, true)
             .map_err(|_| ())
             .ok();
 
@@ -583,9 +593,9 @@ mod tests {
     fn zero_test() {
         let num_shares = 3;
         let secret: Vec<u8> = vec![0];
-        let shares = share(Secret::InMemory(secret.clone()), num_shares, num_shares).unwrap();
+        let shares = share(Secret::InMemory(secret.clone()), num_shares, num_shares, true).unwrap();
         let mut recon = Secret::empty_in_memory();
-        recon.reconstruct(shares).unwrap();
+        recon.reconstruct(shares, true).unwrap();
 
         assert_eq!(secret, recon.unwrap_vec());
 
@@ -596,10 +606,10 @@ mod tests {
         let secret = vec![10, 20, 30, 50];
         let num_shares = 6;
         let num_shares_required = 3;
-        let mut shares = share(Secret::InMemory(secret.clone()), num_shares_required, num_shares).unwrap();
+        let mut shares = share(Secret::InMemory(secret.clone()), num_shares_required, num_shares, true).unwrap();
         shares.as_mut_slice().shuffle(&mut thread_rng());
         let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
-        recon_secret.reconstruct(shares[0..3].to_vec()).unwrap();
+        recon_secret.reconstruct(shares[0..3].to_vec(), true).unwrap();
         
         assert_eq!(secret, recon_secret.unwrap_vec());
     }
