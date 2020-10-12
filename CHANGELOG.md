@@ -1,3 +1,10 @@
+## sss-rs 0.7.2 10/12/2020
+ - Add 'verifiable' flag to sharing/reconstruction functions in wrapped_sharing
+ 	- This allows the use of wrapped_sharing without being forced to place a verfiable hash at
+	  the end of the shares.
+	- Developer Note: It was a bit of an oversight to assume verifiable sharing be not optional.
+	  There are definitely situations where one would not want the reconstruction to be verifiable.
+
 ## sss-rs 0.7.1 07/16/2020
  - Update README.md to reflect recent 0.7.0 changes
 
