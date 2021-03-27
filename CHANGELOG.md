@@ -1,3 +1,8 @@
+## sss-rs 0.8.0 03/27/2021
+ - Rework wrapped_sharing to use wrapped_sharing::Error instead of returning Box\<dyn Error> 
+   so it can be matched against to gain more information. This *shouldn't* be a breaking change, 
+   but the API did change. 
+
 ## sss-rs 0.7.2 10/12/2020
  - Add 'verifiable' flag to sharing/reconstruction functions in wrapped_sharing
  	- This allows the use of wrapped_sharing without being forced to place a verfiable hash at
