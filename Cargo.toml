@@ -6,7 +6,7 @@ edition = "2018"
 description = "A secret sharing scheme implemented in Rust"
 repository = "https://github.com/bilowik/sss-rs"
 categories = ["cryptography"]
-license-file = "LICENSE"
+license = "MIT"
 readme = "README.md"
 
 [badges]
