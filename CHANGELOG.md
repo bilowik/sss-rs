@@ -1,3 +1,7 @@
+## sss-rs 0.8.1 09/06/2021
+ - Remove rust-crypto dependency since it is no longer maintained (thank you umgefahren for pointing that out to me)
+ - Fix improper license setting in Cargo.toml that caused it to be listed as non-standard in crates.io
+
 ## sss-rs 0.8.0 03/27/2021
  - Rework wrapped_sharing to use wrapped_sharing::Error instead of returning Box\<dyn Error> 
    so it can be matched against to gain more information. This *shouldn't* be a breaking change, 
