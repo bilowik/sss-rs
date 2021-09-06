@@ -1,10 +1,13 @@
 use crate::basic_sharing::{from_secrets, reconstruct_secrets};
-use crypto::digest::Digest;
-use crypto::sha3::Sha3;
+// use crypto::digest::Digest;
+// use crypto::sha3::Sha3;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
+use sha3::Digest;
+use sha3::digest::FixedOutput;
+use sha3::digest::generic_array::GenericArray;
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
@@ -61,8 +64,8 @@ impl Secret {
     ///
     /// If $secret.len() is less than 64 bytes, then only $secret.len() number of bytes is used.
     pub fn calculate_hash(&self) -> Result<Vec<u8>, Error> {
-        let mut hasher_output = [0u8; 64];
-        let mut hasher = Sha3::sha3_512();
+        let mut hasher_output = GenericArray::from_slice(&[0u8; 64]).clone();
+        let mut hasher = sha3::Sha3_512::new();
         let len = self.len()?;
         let hash_input_num_bytes = if len < (NUM_FIRST_BYTES_FOR_VERIFY as u64) {
             len as usize
@@ -84,8 +87,8 @@ impl Secret {
                 input_vec.extend_from_slice(&secret[0..hash_input_num_bytes]);
             }
         }
-        hasher.input(input_vec.as_slice());
-        hasher.result(&mut hasher_output);
+        hasher.update(input_vec.as_slice());
+        hasher.finalize_into(&mut hasher_output);
         Ok(hasher_output.to_vec())
     }
 
