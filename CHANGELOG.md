@@ -1,3 +1,10 @@
+## sss-rs 0.9.0 07/09/2021
+ - Move out reconstruction functions out of Secret impl block, for consistency with the sharing 
+   functions.
+   	- reconstruct, reconstruct_from_srcs no longer belong to Secret struct and instead take
+	  it as its first argument.
+ - RustFmt pass, have not used RustFmt up to this point, and fixed a lot of non-idiomatic code.
+
 ## sss-rs 0.8.1 09/06/2021
  - Remove rust-crypto dependency since it is no longer maintained (thank you umgefahren for pointing that out to me)
  - Fix improper license setting in Cargo.toml that caused it to be listed as non-standard in crates.io
