@@ -1,16 +1,16 @@
 #[allow(dead_code)]
 pub mod fraction;
-pub mod polynomial;
-pub mod point;
-pub mod utils;
-pub mod term;
 #[allow(dead_code)]
 pub mod galois_polynomial;
+pub mod point;
+pub mod polynomial;
+pub mod term;
+pub mod utils;
 
 // Re-export the modules contents into this module
 pub use fraction::*;
-pub use polynomial::*;
-pub use point::*;
-pub use utils::*;
-pub use term::*;
 pub use galois_polynomial::*;
+pub use point::*;
+pub use polynomial::*;
+pub use term::*;
+pub use utils::*;

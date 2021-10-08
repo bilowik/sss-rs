@@ -1,32 +1,23 @@
-use super::fraction::Fraction; 
+use super::fraction::Fraction;
 use super::point::Point;
 use super::term::Term;
-use std::ops::{Deref, Add, Sub, Mul, Neg};
-use crate::{impl_binary_op_simple, impl_binary_op};
+use crate::{impl_binary_op, impl_binary_op_simple};
 use num_traits::Pow;
-
+use std::ops::{Add, Deref, Mul, Neg, Sub};
 
 /// A polynomial function that is made up of a Vec of @Term. It supports common operations done on
-/// polynomials including finding the 'y' value with a given 'x' value. 
+/// polynomials including finding the 'y' value with a given 'x' value.
 #[derive(Debug, Clone)]
 pub struct Polynomial {
     terms: Vec<Term>,
 }
 
-
-
-
-
 impl Polynomial {
-
     /// Creates an empty polynomial with no terms
     pub fn new() -> Self {
-        Self { 
-            terms: vec![],
-        }
+        Self { terms: vec![] }
     }
 
-   
     /// From a given list of points, attempts to use Lagrange interpolation to generate the
     /// polynomial that runs through those points. Will return an error if there's not enough
     /// pointes to satisfy the @degree requested. If the degree is not to be known, it can be set
@@ -34,38 +25,35 @@ impl Polynomial {
     pub fn from_points(points: &Vec<Point>, degree: usize) -> Result<Self, Error> {
         let mut temp_polys: Vec<Polynomial> = Vec::with_capacity(degree + 1);
         let mut lagrange_polys: Vec<Polynomial> = Vec::with_capacity(degree + 1);
-        
-        if points.len() <= degree {
-            return Err(
-                Error::NotEnoughPoints { 
-                    points_given: points.len(), 
-                    points_needed: degree + 1, 
-                    degree 
-                }
-            );
-        }
 
+        if points.len() <= degree {
+            return Err(Error::NotEnoughPoints {
+                points_given: points.len(),
+                points_needed: degree + 1,
+                degree,
+            });
+        }
 
         for j in 0..=degree {
             for m in 0..=degree {
                 if m != j {
-                    temp_polys.push(Polynomial::builder()
-                        .with(1, 1)
-                        .with(-(points[m].x()), 0)
-                        .scale_by((points[j].x() - points[m].x()).flip())
-                        .build());
+                    temp_polys.push(
+                        Polynomial::builder()
+                            .with(1, 1)
+                            .with(-(points[m].x()), 0)
+                            .scale_by((points[j].x() - points[m].x()).flip())
+                            .build(),
+                    );
                 }
             }
-            // Get the product of the polynomials and scale by the y value 
+            // Get the product of the polynomials and scale by the y value
             lagrange_polys.push(vec_product(&temp_polys).scale(points[j].y().clone()));
             temp_polys.clear();
-
         }
 
         // Now sum up lagrange polys
         Ok(vec_sum(&lagrange_polys))
     }
-
 
     /// Returns a PolynomialBuilder struct that provides a builder design pattern.
     pub fn builder() -> PolynomialBuilder {
@@ -78,17 +66,18 @@ impl Polynomial {
             Some(term) => {
                 // There is a last term, return its degree
                 term.get_degree()
-            },
+            }
             None => {
                 // No terms existed in the list, return 0 for the degree
                 0
             }
         }
-
     }
 
     fn bin_search_terms(&self, degree: i32) -> Result<usize, usize> {
-        self.terms.as_slice().binary_search_by(|val: &Term| val.get_degree().cmp(&degree))
+        self.terms
+            .as_slice()
+            .binary_search_by(|val: &Term| val.get_degree().cmp(&degree))
     }
 
     // TODO: Refactor the names of these functions, remove the 'to' since it seems unusual and
@@ -97,14 +86,17 @@ impl Polynomial {
     // sense
     /// Adds a term to the polynomial
     pub fn add_to_term(&mut self, term: Term) {
-        self.set_term(self.get_term(term.get_degree()).term_add_same_degree(term).unwrap());
+        self.set_term(
+            self.get_term(term.get_degree())
+                .term_add_same_degree(term)
+                .unwrap(),
+        );
     }
 
     /// Subs aterm from the polynomial
     pub fn sub_to_term(&mut self, term: Term) {
         self.set_terms(&term - self.get_term(term.get_degree()));
     }
-
 
     /// Sets the term with degree @term.get_degree() to @term
     pub fn set_term(&mut self, term: Term) {
@@ -117,9 +109,8 @@ impl Polynomial {
                 self.terms.insert(index, term);
             }
         }
-                 
     }
-   
+
     /// Iterates through @poly's terms and sets each of @self's terms to those from @poly
     pub fn set_terms(&mut self, poly: Polynomial) {
         for term in poly {
@@ -127,9 +118,6 @@ impl Polynomial {
         }
     }
 
-
-
-   
     /// Returns a copy of the term with the given degree, or creates a new zero coefficient term
     /// and returns it. This term is not added into the polynomial
     pub fn get_term(&self, degree: i32) -> Term {
@@ -143,12 +131,8 @@ impl Polynomial {
                 Term::new(0, degree)
             }
         }
-
-
     }
 
-
-   
     /// Adds together two polynomials, consuming both and returning the sum
     pub fn add_polynomial(mut self, rhs: Self) -> Self {
         for term in rhs {
@@ -157,7 +141,6 @@ impl Polynomial {
         self
     }
 
-    
     /// Subtracts one polynomial from the other, consuming both and returning the difference
     pub fn sub_polynomial(mut self, rhs: Self) -> Self {
         for term in rhs {
@@ -176,7 +159,6 @@ impl Polynomial {
             }
         }
         prod
-
     }
 
     /// Scales the polynomial with the given @scalar. Each term gets multiplied by @scalar with no
@@ -194,7 +176,6 @@ impl Polynomial {
         self.scale(-1)
     }
 
-
     /// Get the corresponding 'y' value to the given 'x' value
     pub fn get_y_value(&self, x_val: Fraction) -> Fraction {
         let mut frac = Fraction::new(0, 1);
@@ -206,16 +187,7 @@ impl Polynomial {
 
         frac
     }
-
-
-
-
 }
-
-
-
-
-
 
 impl Neg for Polynomial {
     type Output = Self;
@@ -231,7 +203,6 @@ impl Neg for &Polynomial {
     }
 }
 
-
 impl_binary_op_simple!(Polynomial, Add, add, add_polynomial);
 impl_binary_op_simple!(Polynomial, Sub, sub, sub_polynomial);
 impl_binary_op_simple!(Polynomial, Mul, mul, mul_polynomial);
@@ -244,16 +215,13 @@ impl IntoIterator for Polynomial {
     fn into_iter(self) -> Self::IntoIter {
         self.terms.into_iter()
     }
-
 }
-
 
 impl std::fmt::Display for Polynomial {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut out: String = String::from("");
 
         for i in 0..self.terms.len() {
-            
             let curr_term = &self.terms[i];
 
             if curr_term.deref() != &Fraction::from(0) {
@@ -279,18 +247,11 @@ impl Default for Polynomial {
     }
 }
 
-
-
-
-
 impl From<Term> for Polynomial {
     fn from(term: Term) -> Self {
-        Polynomial::builder()
-            .with_term(term)
-            .build()
+        Polynomial::builder().with_term(term).build()
     }
 }
-
 
 impl PartialEq for Polynomial {
     fn eq(&self, other: &Self) -> bool {
@@ -310,10 +271,6 @@ impl PartialEq for Polynomial {
 }
 
 impl Eq for Polynomial {}
-        
-
-
-
 
 pub struct PolynomialBuilder {
     polynomial: Polynomial,
@@ -321,7 +278,9 @@ pub struct PolynomialBuilder {
 
 impl PolynomialBuilder {
     pub fn new() -> Self {
-        PolynomialBuilder { polynomial: Default::default() }
+        PolynomialBuilder {
+            polynomial: Default::default(),
+        }
     }
     pub fn with_term(mut self, term: Term) -> Self {
         self.polynomial.set_term(term);
@@ -349,21 +308,31 @@ impl PolynomialBuilder {
     pub fn build(&mut self) -> Polynomial {
         std::mem::replace(&mut self.polynomial, Default::default())
     }
-
 }
-
 
 #[derive(Debug, Clone)]
 pub enum Error {
-    NotEnoughPoints {points_given: usize, points_needed: usize, degree: usize},
+    NotEnoughPoints {
+        points_given: usize,
+        points_needed: usize,
+        degree: usize,
+    },
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::NotEnoughPoints {points_given, points_needed, degree} => {
-                write!(f, "Not enough points to generate a polynomial of degree {}. 
-                       Need {} points, only given {}.", degree, points_needed, points_given)
+            Error::NotEnoughPoints {
+                points_given,
+                points_needed,
+                degree,
+            } => {
+                write!(
+                    f,
+                    "Not enough points to generate a polynomial of degree {}. 
+                       Need {} points, only given {}.",
+                    degree, points_needed, points_given
+                )
             }
         }
     }
@@ -371,17 +340,10 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-
-
-
-
-
-
-
 // Used to cleanup code in from_points
 fn vec_product(vec: &Vec<Polynomial>) -> Polynomial {
     if vec.len() == 0 {
-        return Default::default()
+        return Default::default();
     }
 
     let mut product = vec[0].clone();
@@ -393,37 +355,28 @@ fn vec_product(vec: &Vec<Polynomial>) -> Polynomial {
 
 // Used to cleanup code in from_points
 fn vec_sum(vec: &Vec<Polynomial>) -> Polynomial {
-
     let mut sum = Polynomial::default();
     for index in 0..vec.len() {
         sum = sum + &vec[index];
-        
     }
     sum
 }
 
-
-
-
 #[cfg(test)]
 mod test {
-    use super::Polynomial;
     use super::Fraction;
-    use super::Term;
     use super::Point;
-
+    use super::Polynomial;
+    use super::Term;
 
     #[test]
     fn display() {
-        let poly = Polynomial::builder()
-            .with(4, 0)
-            .with(3, 1)
-            .build();
+        let poly = Polynomial::builder().with(4, 0).with(3, 1).build();
         let poly2 = Polynomial::default();
 
         let poly3 = Polynomial::builder()
-            .with(Fraction::new(3,2), 0)
-            .with(Fraction::new(8,3), 1)
+            .with(Fraction::new(3, 2), 0)
+            .with(Fraction::new(8, 3), 1)
             .build();
 
         assert_eq!("4x^0 + 3x^1", poly.to_string());
@@ -435,54 +388,31 @@ mod test {
 
     #[test]
     fn add() {
-        
         let poly1 = Polynomial::builder()
             .with(4, 0)
             .with(2, 1)
-            .add_to(
-                Polynomial::builder()
-                    .with(2, 0)
-                    .with(5, 1)
-                    .build()
-            )
+            .add_to(Polynomial::builder().with(2, 0).with(5, 1).build())
             .build();
-        let poly2 = Polynomial::builder()
-            .with(6, 0)
-            .with(7, 1)
-            .build();
+        let poly2 = Polynomial::builder().with(6, 0).with(7, 1).build();
 
         assert_eq!(poly1, poly2);
     }
-    
+
     #[test]
     fn from_points() {
-        let points = vec![
-            Point::new(1, 2),
-            Point::new(2, 3),
-        ];
-
+        let points = vec![Point::new(1, 2), Point::new(2, 3)];
 
         let poly = Polynomial::from_points(&points, 1).unwrap();
-        let poly2 = Polynomial::builder()
-            .with(1, 0)
-            .with(1, 1)
-            .build();
+        let poly2 = Polynomial::builder().with(1, 0).with(1, 1).build();
 
-    
         assert_eq!(poly, poly2);
     }
 
     #[test]
     fn from_points_second() {
-        let points2 = vec![
-            Point::new(0, 0),
-            Point::new(1, 1),
-            Point::new(2, 4),
-        ];
+        let points2 = vec![Point::new(0, 0), Point::new(1, 1), Point::new(2, 4)];
         let poly3 = Polynomial::from_points(&points2, 2).unwrap();
-        let poly4 = Polynomial::builder()
-            .with(1, 2)
-            .build();
+        let poly4 = Polynomial::builder().with(1, 2).build();
 
         assert_eq!(poly3, poly4);
     }
@@ -493,7 +423,7 @@ mod test {
             Point::new(0, 0),
             Point::new(5, 8),
             Point::new(2, 3),
-            Point::new(8, 14)
+            Point::new(8, 14),
         ];
 
         let poly = Polynomial::from_points(&points, 3).unwrap();
@@ -504,7 +434,6 @@ mod test {
             .build();
 
         assert_eq!(poly, poly2);
-
     }
 
     /*
@@ -522,14 +451,10 @@ mod test {
             .with(1, 2)
             .scale_by(3)
             .build();
-        let poly2 = Polynomial { 
-            terms: vec![
-                Term::new(15, 0),
-                Term::new(12, 1),
-                Term::new(3, 2)
-            ]
+        let poly2 = Polynomial {
+            terms: vec![Term::new(15, 0), Term::new(12, 1), Term::new(3, 2)],
         };
-        
+
         assert_eq!(poly, poly2);
     }
 
@@ -542,7 +467,6 @@ mod test {
             .with(4, 1)
             .with(1, 2)
             .build();
-
 
         assert_eq!(&poly * &poly2, Polynomial::default());
         assert_eq!(&poly + &poly2, poly2.clone());
@@ -564,19 +488,14 @@ mod test {
             .with(-1, 2)
             .build();
 
-
         assert_eq!(&poly, &-&poly2);
         assert_eq!(&-&poly, &poly2);
         assert_eq!(&(-(-&poly)), &poly);
-
-    } 
+    }
 
     #[test]
     fn multiplication() {
-        let poly = Polynomial::builder()
-            .with(2, 0)
-            .with(1, 1)
-            .build();
+        let poly = Polynomial::builder().with(2, 0).with(1, 1).build();
 
         let poly2 = Polynomial::builder()
             .with(4, 0)
@@ -596,10 +515,7 @@ mod test {
 
     #[test]
     fn get_y_value() {
-        let poly = Polynomial::builder()
-            .with(2, 0)
-            .with(1, 1)
-            .build();
+        let poly = Polynomial::builder().with(2, 0).with(1, 1).build();
         let poly2 = Polynomial::builder()
             .with(-4, 0)
             .with(-2, 1)
@@ -611,26 +527,12 @@ mod test {
         assert_eq!(poly.get_y_value(1.into()), 3.into());
         assert_eq!(poly2.get_y_value(2.into()), (-4).into());
         assert_eq!(poly3.get_y_value(10000.into()), 0.into());
-
     }
-    
+
     #[test]
     fn negative_degree_test() {
-        let poly = Polynomial::builder()
-            .with(1, -1)
-            .with(3, -2)
-            .build();
+        let poly = Polynomial::builder().with(1, -1).with(3, -2).build();
 
         assert_eq!(poly.get_y_value(5.into()), Fraction::new(8, 25));
-
     }
-
-
-
-
-
 }
-
-
-
-

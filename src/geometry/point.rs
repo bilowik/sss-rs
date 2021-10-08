@@ -4,8 +4,6 @@ use std::ops::{Add, Sub};
 
 #[allow(dead_code)]
 
-
-
 /// A point structure that uses fractional values so that it can represent whole and non-whole
 /// numbers without the need for truncating.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
@@ -14,12 +12,13 @@ pub struct Point {
     y: Fraction,
 }
 
-
 impl Point {
-
     /// Creates a point from two values that impl Into<Fraction>
     pub fn new<T: Into<Fraction>, S: Into<Fraction>>(x: T, y: S) -> Self {
-        Point { x: x.into(), y: y.into() }
+        Point {
+            x: x.into(),
+            y: y.into(),
+        }
     }
 
     pub fn add_point(mut self, rhs: Point) -> Self {
@@ -52,19 +51,17 @@ impl Point {
 impl_binary_op_simple!(Point, Add, add, add_point);
 impl_binary_op_simple!(Point, Sub, sub, sub_point);
 
-
 impl std::fmt::Display for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "({},{})", &self.x, &self.y)
     }
 }
 
-
 #[cfg(test)]
 mod tests {
-   use super::Point;
+    use super::Point;
 
-   #[test]
+    #[test]
     fn add() {
         let p1 = Point::new(4, 2);
         let p2 = Point::new(3, 7);
@@ -92,6 +89,3 @@ mod tests {
         assert_eq!(p1.scale(-1), Point::new(-4, -2));
     }
 }
-
-
-

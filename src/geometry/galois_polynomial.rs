@@ -1,13 +1,12 @@
 use galois_2p8::*;
 use lazy_static::*;
-use std::ops::{Add, Sub, Mul, Div, Deref};
+use std::ops::{Add, Deref, Div, Mul, Sub};
 
 lazy_static! {
     // The field to use for all the finite field arithmetic
-    static ref FIELD: PrimitivePolynomialField = 
+    static ref FIELD: PrimitivePolynomialField =
         PrimitivePolynomialField::new(field::PRIMITIVES[0]).unwrap();
 }
-
 
 /// A wrapper around u8, used to implement arithmetic operations over a finite field
 #[derive(Clone, Copy, Debug)]
@@ -52,13 +51,10 @@ impl Div for Coeff {
     }
 }
 
-
 #[derive(Clone, Debug)]
 pub struct GaloisPolynomial {
     coeffs: Vec<Coeff>,
 }
-
-
 
 impl GaloisPolynomial {
     /// Constructs a polynomail with no coefficients
@@ -84,13 +80,15 @@ impl GaloisPolynomial {
         }
     }
 
-
     /// Reconstructs a polynomial from the given points
     pub fn from_points(points: &[(u8, u8)]) -> GaloisPolynomial {
         let mut lagrange_polys = Vec::with_capacity(points.len());
-        let mut  temp_polys = Vec::with_capacity(points.len());
+        let mut temp_polys = Vec::with_capacity(points.len());
 
-        let points: Vec<(_,_)> = points.into_iter().map(|(x, y)| (Coeff(*x), Coeff(*y))).collect();
+        let points: Vec<(_, _)> = points
+            .into_iter()
+            .map(|(x, y)| (Coeff(*x), Coeff(*y)))
+            .collect();
         for i in 0..points.len() {
             for j in 0..points.len() {
                 if i != j {
@@ -104,18 +102,22 @@ impl GaloisPolynomial {
 
             // Now multiply all the current poly's together and push it onto langrange_polys
             let initial_val = temp_polys[0].clone();
-            lagrange_polys.push(temp_polys
-                                    .clone()
-                                    .into_iter()
-                                    .skip(1)
-                                    .fold(initial_val, |acc, poly| acc.mult(poly)).scale(points[i].1));
+            lagrange_polys.push(
+                temp_polys
+                    .clone()
+                    .into_iter()
+                    .skip(1)
+                    .fold(initial_val, |acc, poly| acc.mult(poly))
+                    .scale(points[i].1),
+            );
             temp_polys.clear();
         }
 
         let initial_val = lagrange_polys[0].clone();
-        let sum = lagrange_polys.into_iter()
-                      .skip(1)
-                      .fold(initial_val, |acc, poly| acc.add(poly));
+        let sum = lagrange_polys
+            .into_iter()
+            .skip(1)
+            .fold(initial_val, |acc, poly| acc.add(poly));
         sum
     }
 
@@ -125,7 +127,10 @@ impl GaloisPolynomial {
     /// intercept.
     pub fn get_y_intercept_from_points(points: &[(u8, u8)]) -> u8 {
         let mut acc = Coeff(0);
-        let points: Vec<(_,_)> = points.into_iter().map(|(x, y)| (Coeff(*x), Coeff(*y))).collect();
+        let points: Vec<(_, _)> = points
+            .into_iter()
+            .map(|(x, y)| (Coeff(*x), Coeff(*y)))
+            .collect();
         for i in 0..points.len() {
             let mut curr = Coeff(1);
             for j in 0..points.len() {
@@ -151,8 +156,7 @@ impl GaloisPolynomial {
     pub fn get_coeff(&self, index: usize) -> Coeff {
         if index + 1 < self.coeffs.len() {
             self.coeffs[index]
-        }
-        else {
+        } else {
             Coeff(0)
         }
     }
@@ -175,7 +179,7 @@ impl GaloisPolynomial {
 
     /// Multiplies two polynomial together
     pub fn mult(self, rhs: Self) -> Self {
-        let mut prod = Self::with_vec(Vec::with_capacity(self.coeffs.len() + rhs.coeffs.len())); 
+        let mut prod = Self::with_vec(Vec::with_capacity(self.coeffs.len() + rhs.coeffs.len()));
         for lhs_coeff in self.coeffs {
             for (i, rhs_coeff) in rhs.coeffs.clone().into_iter().enumerate() {
                 prod.set_coeff(prod.get_coeff(i) + (rhs_coeff * lhs_coeff), i);
@@ -192,21 +196,17 @@ impl GaloisPolynomial {
         self
     }
 
-
     /// Calculates the y-value given an x-value
     pub fn get_y_value(&self, x_val: u8) -> u8 {
         let x_val_coeff = Coeff(x_val);
         // This needs to be reversed since we are assuming the y-intercept in the field is the
         // left-most byte rather than the right-most.
-        *(&self.coeffs).into_iter().rev().fold(Coeff(0u8), |acc, co| (acc * x_val_coeff) + *co)
+        *(&self.coeffs)
+            .into_iter()
+            .rev()
+            .fold(Coeff(0u8), |acc, co| (acc * x_val_coeff) + *co)
     }
-
-
-
 }
-
-
-
 
 #[cfg(test)]
 mod test {
@@ -218,27 +218,18 @@ mod test {
         assert_eq!(5, poly.get_y_value(0));
     }
 
-    
     #[test]
     fn from_points_gf() {
         let poly = GaloisPolynomial::with_vec(vec![5, 128, 8]);
         let x_vals = vec![1, 2, 4];
-        let points: Vec<(_,_)> = x_vals.into_iter().map(|x| (x, poly.get_y_value(x))).collect();
+        let points: Vec<(_, _)> = x_vals
+            .into_iter()
+            .map(|x| (x, poly.get_y_value(x)))
+            .collect();
         let poly_2 = GaloisPolynomial::from_points(points.as_slice());
         let y0 = GaloisPolynomial::get_y_intercept_from_points(points.as_slice());
 
         assert_eq!(poly.get_y_value(0), poly_2.get_y_value(0));
         assert_eq!(poly.get_y_value(0), y0);
-
     }
 }
-
-
-
-
-
-
-
-
-
-

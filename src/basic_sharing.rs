@@ -134,9 +134,7 @@ pub fn from_secrets(
 ///     of the secret.
 ///
 /// *For the rest of the arguments, see [reconstruct_secret]*
-pub fn reconstruct_secrets(
-    share_lists: Vec<Vec<(u8, u8)>>,
-) -> Result<Vec<u8>, Error> {
+pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Result<Vec<u8>, Error> {
     let mut secrets: Vec<u8> = Vec::with_capacity(share_lists[0].len());
     let share_lists = transpose_vec_matrix(share_lists)?;
     for point_list in share_lists {
@@ -181,7 +179,7 @@ pub fn from_secrets_no_points(
 }
 
 /// Wrapper around its corresponding share function, it simply uses the [expand_share]
-/// function to reconstruct the secret from shares created using 
+/// function to reconstruct the secret from shares created using
 /// [from_secrets_no_points]
 ///
 /// The format the shares are to be in are as follows:
@@ -192,9 +190,7 @@ pub fn from_secrets_no_points(
 /// meant to mix with the other raw_share functions and vice-versa.
 ///
 /// See [reconstruct_secrets] for more documentation.
-pub fn reconstruct_secrets_no_points(
-    share_lists: Vec<Vec<u8>>,
-) -> Result<Vec<u8>, Error> {
+pub fn reconstruct_secrets_no_points(share_lists: Vec<Vec<u8>>) -> Result<Vec<u8>, Error> {
     reconstruct_secrets(
         share_lists
             .into_iter()
@@ -318,8 +314,7 @@ mod tests {
         }
         */
 
-        let shares =
-            from_secret(secret, shares_required, shares_to_create, None).unwrap();
+        let shares = from_secret(secret, shares_required, shares_to_create, None).unwrap();
 
         let secret_decrypted = reconstruct_secret(shares);
         assert_eq!(secret, secret_decrypted);
@@ -355,8 +350,7 @@ mod tests {
         let now = Instant::now();
 
         let share_lists =
-            from_secrets(secret.as_bytes(), shares_required, shares_to_create)
-                .unwrap();
+            from_secrets(secret.as_bytes(), shares_required, shares_to_create).unwrap();
 
         let recon_secret_vec = reconstruct_secrets(share_lists).unwrap();
         let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
@@ -376,6 +370,4 @@ mod tests {
         let recon = reconstruct_secrets_no_points(shares).unwrap();
         assert_eq!(secret, recon);
     }
-
-
 }

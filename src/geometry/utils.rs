@@ -2,7 +2,7 @@
  * operations
  *
  * This macro is used to easily and quickly implement binary operations for structs for a mixture
- * of reference and non-reference values 
+ * of reference and non-reference values
  *
  * $type is the type of the struct to be implmeneting on, the lhs
  * $type_rhs is rhs, the other operand
@@ -21,7 +21,7 @@ macro_rules! impl_binary_op {
                 self.$op_func(rhs)
             }
         }
-        
+
         impl $op_trait<&$type_rhs> for $type {
             type Output = $output;
 
@@ -29,7 +29,7 @@ macro_rules! impl_binary_op {
                 self.$op_func(rhs.clone())
             }
         }
-        
+
         impl $op_trait<$type_rhs> for &$type {
             type Output = $output;
 
@@ -37,7 +37,7 @@ macro_rules! impl_binary_op {
                 self.clone().$op_func(rhs)
             }
         }
-        
+
         impl $op_trait<&$type_rhs> for &$type {
             type Output = $output;
 
@@ -45,18 +45,15 @@ macro_rules! impl_binary_op {
                 self.clone().$op_func(rhs.clone())
             }
         }
-        
-    }
+    };
 }
 
 // See the above macro for documentation
-// This is a simplified wrapper that assumes that the lhs, rhs, and output of the operation are 
+// This is a simplified wrapper that assumes that the lhs, rhs, and output of the operation are
 // all the same
 #[macro_export]
 macro_rules! impl_binary_op_simple {
     ($type:ty, $op_trait:ident, $impl_func:ident, $op_func:ident) => {
         impl_binary_op!($type, $type, $op_trait, $impl_func, $op_func, $type);
-    }
+    };
 }
-
-

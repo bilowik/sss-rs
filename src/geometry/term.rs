@@ -1,24 +1,22 @@
-use std::ops::{Add, Sub, Mul, Neg, Deref};
-use super::{
-    fraction::Fraction,
-    polynomial::Polynomial,
-};
+use super::{fraction::Fraction, polynomial::Polynomial};
 use crate::impl_binary_op;
+use std::ops::{Add, Deref, Mul, Neg, Sub};
 
-
-/// Represents a term in a polynomial function where the @co coefficient is multiplied by 
-/// 'x' ^ @degree. 
+/// Represents a term in a polynomial function where the @co coefficient is multiplied by
+/// 'x' ^ @degree.
 #[derive(Default, Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Term {
-    degree: i32, // The degree x is raised to
+    degree: i32,  // The degree x is raised to
     co: Fraction, // The coefficient to the term
 }
 
 impl Term {
-
     /// Creates a new Term with a given fraction and degree
     pub fn new<T: Into<Fraction>>(co: T, degree: i32) -> Self {
-        Term {co: co.into(), degree}
+        Term {
+            co: co.into(),
+            degree,
+        }
     }
 
     pub fn get_degree(&self) -> i32 {
@@ -38,11 +36,10 @@ impl Term {
     /// NOTE: If the two terms do not have the same degree, only an error will be returned and the
     /// values dropped.
     pub fn term_add_same_degree(mut self, rhs: Term) -> Result<Term, ()> {
-        if self.get_degree() == rhs.get_degree() { 
+        if self.get_degree() == rhs.get_degree() {
             self.co = self.co + rhs.co;
             Ok(self)
-        }
-        else {
+        } else {
             Err(())
         }
     }
@@ -53,12 +50,8 @@ impl Term {
         if self.degree == rhs.degree {
             self.co = self.co + rhs.co;
             self.into()
-        }
-        else {
-            Polynomial::builder()
-                .with_term(self)
-                .with_term(rhs)
-                .build()
+        } else {
+            Polynomial::builder().with_term(self).with_term(rhs).build()
         }
     }
 
@@ -68,8 +61,7 @@ impl Term {
         if self.degree == rhs.degree {
             self.co = self.co - rhs.co;
             self.into()
-        }
-        else {
+        } else {
             Polynomial::builder()
                 .with_term(self)
                 .with_term(-rhs)
@@ -85,7 +77,6 @@ impl Term {
         self
     }
 
-
     /// Consuming multiplication operation which scales the term by a given fraction.
     /// This is equivalent to @term_mul with the second term having a @degree of 0
     pub fn term_mul_fraction<T: Into<Fraction>>(mut self, rhs: T) -> Self {
@@ -93,7 +84,7 @@ impl Term {
         self
     }
 
-    /// Consuming add operation that adds a polynomial to a given term. 
+    /// Consuming add operation that adds a polynomial to a given term.
     /// These are conveience operations that allow for:
     /// Polynomai + Term
     /// and
@@ -114,11 +105,7 @@ impl Term {
     pub fn term_mul_poly(self, rhs: Polynomial) -> Polynomial {
         rhs.mul_polynomial(self.into())
     }
-
-
-
 }
-
 
 impl_binary_op!(Term, Term, Add, add, term_add, Polynomial);
 impl_binary_op!(Term, Term, Sub, sub, term_sub, Polynomial);
@@ -127,8 +114,6 @@ impl_binary_op!(Term, Fraction, Mul, mul, term_mul_fraction, Term);
 impl_binary_op!(Term, Polynomial, Add, add, term_add_poly, Polynomial);
 impl_binary_op!(Term, Polynomial, Sub, sub, term_sub_poly, Polynomial);
 impl_binary_op!(Term, Polynomial, Mul, mul, term_mul_poly, Polynomial);
-
-
 
 impl Neg for Term {
     type Output = Self;
@@ -142,10 +127,9 @@ impl Neg for &Term {
     type Output = Term;
 
     fn neg(self) -> Self::Output {
-       self.clone().neg()
+        self.clone().neg()
     }
 }
-
 
 impl AsRef<Fraction> for Term {
     fn as_ref(&self) -> &Fraction {
@@ -161,14 +145,8 @@ impl Deref for Term {
     }
 }
 
-
 impl std::fmt::Display for Term {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}x^{}", self.co, self.degree)
     }
 }
-
-
-
-
-
