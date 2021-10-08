@@ -55,6 +55,10 @@ impl Secret {
         }
     }
 
+    pub fn is_empty(&self) -> Result<bool, Error> {
+        Ok(self.len()? == 0)
+    }
+
     /// Calculates and returns the Sha3-512 hash of the first 64 bytes of the secret.
     ///
     /// This is mainly used for verifying secret reconstruction, where the chances of incorrect
@@ -62,7 +66,7 @@ impl Secret {
     ///
     /// If $secret.len() is less than 64 bytes, then only $secret.len() number of bytes is used.
     pub fn calculate_hash(&self) -> Result<Vec<u8>, Error> {
-        let mut hasher_output = GenericArray::from_slice(&[0u8; 64]).clone();
+        let mut hasher_output = *GenericArray::from_slice(&[0u8; 64]);
         let mut hasher = sha3::Sha3_512::new();
         let len = self.len()?;
         let hash_input_num_bytes = if len < (NUM_FIRST_BYTES_FOR_VERIFY as u64) {
@@ -126,7 +130,7 @@ impl Secret {
     /// Returns None if the inner value is a path, else returns the secret.
     pub fn try_unwrap_vec(&mut self) -> Option<Vec<u8>> {
         match self {
-            Secret::InMemory(ref mut secret) => Some(std::mem::replace(secret, Vec::new())),
+            Secret::InMemory(ref mut secret) => Some(std::mem::take(secret)),
             _ => None,
         }
     }
@@ -217,7 +221,7 @@ impl std::iter::Iterator for SecretIterator {
                 _ => e.into(),
             }));
         }
-        if result.len() == 0 {
+        if result.is_empty() {
             return None;
         }
         Some(Ok(result))
@@ -234,7 +238,7 @@ impl std::iter::Iterator for SecretIterator {
 ///             to verify reconstruction of the secret.
 pub fn share_to_writables<'a>(
     secret: Secret,
-    mut dests: &mut Vec<Box<dyn Write + 'a>>,
+    dests: &mut Vec<Box<dyn Write + 'a>>,
     shares_required: u8,
     shares_to_create: u8,
     verify: bool,
@@ -242,8 +246,8 @@ pub fn share_to_writables<'a>(
     // This just writes each corresponding share_list in share_lists to a dest in dests. This
     // is written here as a closure since it's used at two different points in this function
     let share_lists_to_dests =
-        |lists: Vec<Vec<(u8, u8)>>, mut dests: &mut Vec<Box<dyn Write + 'a>>| -> Result<(), Error> {
-            for (share_list, dest) in lists.into_iter().zip((&mut dests).into_iter()) {
+        |lists: Vec<Vec<(u8, u8)>>, dests: &mut Vec<Box<dyn Write + 'a>>| -> Result<(), Error> {
+            for (share_list, dest) in lists.into_iter().zip(dests.iter_mut()) {
                 dest.write_all(
                     share_list
                         .into_iter()
@@ -256,8 +260,8 @@ pub fn share_to_writables<'a>(
         };
 
     // Write out the x value to each dest that will be used for each following point
-    for (x_val, dest) in dests.into_iter().enumerate() {
-        dest.write(&[(x_val + 1) as u8])?;
+    for (x_val, dest) in dests.iter_mut().enumerate() {
+        dest.write_all(&[(x_val + 1) as u8])?;
     }
 
     if dests.len() < (shares_to_create as usize) {
@@ -272,14 +276,14 @@ pub fn share_to_writables<'a>(
         // if the secret is a file and a reading error occured during iteration
         let secret_segment = secret_segment?;
 
-        if secret_segment.len() > 0 {
+        if !secret_segment.is_empty() {
             let share_lists = from_secrets(
                 secret_segment.as_slice(),
                 shares_required,
                 shares_to_create,
                 None,
             )?;
-            share_lists_to_dests(share_lists, &mut dests)?;
+            share_lists_to_dests(share_lists, dests)?;
         }
 
         std::mem::drop(secret_segment); // ensure the memory DOES get dropped
@@ -292,11 +296,11 @@ pub fn share_to_writables<'a>(
         let share_lists = from_secrets(&hash, shares_required, shares_to_create, None)?;
 
         // The shares for the hash have been created, write them all to dests
-        share_lists_to_dests(share_lists, &mut dests)?;
+        share_lists_to_dests(share_lists, dests)?;
     }
 
     // Flush writes to all dests to ensure all bytes are written
-    for dest in (&mut dests).into_iter() {
+    for dest in dests.iter_mut() {
         dest.flush().ok();
     }
     Ok(())
@@ -395,7 +399,7 @@ pub fn reconstruct(secret: &mut Secret, srcs: Vec<Vec<u8>>, verify: bool) -> Res
 /// **src_len** MUST be an accurate length of the shares
 pub fn reconstruct_from_srcs<'a>(
     secret: &mut Secret,
-    mut srcs: &mut Vec<Box<dyn Read + 'a>>,
+    srcs: &mut Vec<Box<dyn Read + 'a>>,
     src_len: u64,
     verify: bool,
 ) -> Result<(), Error> {
@@ -473,7 +477,7 @@ pub fn reconstruct_from_srcs<'a>(
 
     if verify {
         // Now read in the hash
-        let hash_segments = get_shares(512, &mut srcs, &x_vals)?;
+        let hash_segments = get_shares(512, srcs, &x_vals)?;
         let recon_hash = reconstruct_secrets(hash_segments)?;
         // Drop dest since if it is a file, we will be re-opening it to read from it to
         // calculate the hash. Ensure output is flushed

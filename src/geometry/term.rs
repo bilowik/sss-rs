@@ -28,7 +28,7 @@ impl Term {
     }
 
     /// Return a reference to the coefficient of the term
-    pub fn get_co<'a>(&'a self) -> &'a Fraction {
+    pub fn get_co(&self) -> &Fraction {
         &self.co
     }
 
@@ -73,7 +73,7 @@ impl Term {
     /// terms will always return a single term thus not needing to be a polynomial
     pub fn term_mul(mut self, rhs: Term) -> Term {
         self.co = self.co * rhs.co;
-        self.degree = self.degree + rhs.degree;
+        self.degree += rhs.degree;
         self
     }
 

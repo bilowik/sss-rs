@@ -20,9 +20,9 @@ impl Deref for Coeff {
     }
 }
 
-impl Into<Coeff> for u8 {
-    fn into(self) -> Coeff {
-        Coeff(self)
+impl From<u8> for Coeff {
+    fn from(source: u8) -> Coeff {
+        Coeff(source)
     }
 }
 
@@ -68,7 +68,7 @@ impl GaloisPolynomial {
     /// The coefficients go from left to right, where x^0 at coeffs[0]
     pub fn from_slice(coeffs: &[u8]) -> GaloisPolynomial {
         Self {
-            coeffs: coeffs.into_iter().map(|val| Coeff(*val)).collect(),
+            coeffs: coeffs.iter().map(|val| Coeff(*val)).collect(),
         }
     }
 
@@ -76,7 +76,7 @@ impl GaloisPolynomial {
     /// The coefficients go from left to right, where x^0 at coeffs[0]
     pub fn with_vec(coeffs: Vec<u8>) -> GaloisPolynomial {
         Self {
-            coeffs: coeffs.into_iter().map(|val| Coeff(val)).collect(),
+            coeffs: coeffs.into_iter().map(Coeff).collect(),
         }
     }
 
@@ -85,10 +85,7 @@ impl GaloisPolynomial {
         let mut lagrange_polys = Vec::with_capacity(points.len());
         let mut temp_polys = Vec::with_capacity(points.len());
 
-        let points: Vec<(_, _)> = points
-            .into_iter()
-            .map(|(x, y)| (Coeff(*x), Coeff(*y)))
-            .collect();
+        let points: Vec<(_, _)> = points.iter().map(|(x, y)| (Coeff(*x), Coeff(*y))).collect();
         for i in 0..points.len() {
             for j in 0..points.len() {
                 if i != j {
@@ -114,11 +111,11 @@ impl GaloisPolynomial {
         }
 
         let initial_val = lagrange_polys[0].clone();
-        let sum = lagrange_polys
+
+        lagrange_polys
             .into_iter()
             .skip(1)
-            .fold(initial_val, |acc, poly| acc.add(poly));
-        sum
+            .fold(initial_val, |acc, poly| acc.add(poly))
     }
 
     /// Calculates the y intercept of the polynomial formed by the given points
@@ -127,10 +124,7 @@ impl GaloisPolynomial {
     /// intercept.
     pub fn get_y_intercept_from_points(points: &[(u8, u8)]) -> u8 {
         let mut acc = Coeff(0);
-        let points: Vec<(_, _)> = points
-            .into_iter()
-            .map(|(x, y)| (Coeff(*x), Coeff(*y)))
-            .collect();
+        let points: Vec<(_, _)> = points.iter().map(|(x, y)| (Coeff(*x), Coeff(*y))).collect();
         for i in 0..points.len() {
             let mut curr = Coeff(1);
             for j in 0..points.len() {
@@ -202,7 +196,7 @@ impl GaloisPolynomial {
         // This needs to be reversed since we are assuming the y-intercept in the field is the
         // left-most byte rather than the right-most.
         *(&self.coeffs)
-            .into_iter()
+            .iter()
             .rev()
             .fold(Coeff(0u8), |acc, co| (acc * x_val_coeff) + *co)
     }

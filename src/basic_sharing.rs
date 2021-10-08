@@ -89,7 +89,7 @@ pub fn from_secrets(
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
-    if secret.len() == 0 {
+    if secret.is_empty() {
         return Err(Error::EmptySecretArray);
     }
 
@@ -167,7 +167,7 @@ pub fn from_secrets_no_points(
     Ok(
         from_secrets(secret, shares_required, shares_to_create, rand)?
             .into_iter()
-            .map(|share| reduce_share(share))
+            .map(reduce_share)
             .map(|(x, ys)| {
                 let mut new_share = Vec::with_capacity(ys.len() + 1);
                 new_share.push(x);
@@ -191,12 +191,7 @@ pub fn from_secrets_no_points(
 ///
 /// See [reconstruct_secrets] for more documentation.
 pub fn reconstruct_secrets_no_points(share_lists: Vec<Vec<u8>>) -> Result<Vec<u8>, Error> {
-    reconstruct_secrets(
-        share_lists
-            .into_iter()
-            .map(|share| expand_share(share))
-            .collect(),
-    )
+    reconstruct_secrets(share_lists.into_iter().map(expand_share).collect())
 }
 
 /// This 'compresses' a share by pulling out it's X value from each point since
@@ -213,12 +208,13 @@ pub fn reduce_share(share: Vec<(u8, u8)>) -> (u8, Vec<u8>) {
 /// This allows for the share to be properly reconstructed.
 pub fn expand_share(share: Vec<u8>) -> Vec<(u8, u8)> {
     let x_value = share[0];
-    share[1..].into_iter().map(|y| (x_value, *y)).collect()
+    share[1..].iter().map(|y| (x_value, *y)).collect()
 }
 
 /// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
 ///
 /// **matrix:** The matrix to be transposed, must be a valid matrix else an error is returned.
+#[allow(clippy::needless_range_loop)]
 pub fn transpose_vec_matrix<T: Clone>(matrix: Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
     for i in 1..matrix.len() {
         if matrix[i - 1].len() != matrix[i].len() {
@@ -237,6 +233,11 @@ pub fn transpose_vec_matrix<T: Clone>(matrix: Vec<Vec<T>>) -> Result<Vec<Vec<T>>
         transpose.push(Vec::with_capacity(row_len));
     }
 
+    /*for i in 0..matrix.len() {
+        for j in 0..matrix[i].len() {
+            transpose[j].push(matrix[i][j].clone());
+        }
+    }*/
     for i in 0..matrix.len() {
         for j in 0..matrix[i].len() {
             transpose[j].push(matrix[i][j].clone());

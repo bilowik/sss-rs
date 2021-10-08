@@ -60,7 +60,7 @@ impl Fraction {
     /// Consuming add operation
     pub fn add_fraction(mut self, mut other: Fraction) -> Self {
         self.match_denominator(&mut other);
-        self.numerator = self.numerator + other.numerator;
+        self.numerator += other.numerator;
         self.reduce()
     }
 
@@ -71,8 +71,8 @@ impl Fraction {
 
     /// Consuming multiplication operation
     pub fn mul_fraction(mut self, other: Fraction) -> Self {
-        self.numerator = self.numerator * other.numerator;
-        self.denominator = self.denominator * other.denominator;
+        self.numerator *= other.numerator;
+        self.denominator *= other.denominator;
         self.reduce()
     }
 
@@ -83,7 +83,7 @@ impl Fraction {
 
     /// Consuming modulo operation
     pub fn mod_fraction(self, rhs: Fraction) -> Self {
-        let mut div = &self / &rhs;
+        let mut div = self / rhs;
 
         if self.numerator.signum() == 1 {
             div = div.floor();
@@ -96,7 +96,7 @@ impl Fraction {
 
     /// Consuming add operation with the right hand side being a i64
     pub fn add_i64(mut self, rhs: i64) -> Self {
-        self.numerator = self.numerator + (rhs * self.denominator);
+        self.numerator += rhs * self.denominator;
         self.reduce()
     }
 
@@ -107,13 +107,13 @@ impl Fraction {
 
     /// Consuming multiplication operation with the right hand side being a i64
     pub fn mul_i64(mut self, rhs: i64) -> Self {
-        self.numerator = self.numerator * rhs;
+        self.numerator *= rhs;
         self.reduce()
     }
 
     /// Consuming division operation with the right hand side being a i64
     pub fn div_i64(mut self, rhs: i64) -> Self {
-        self.denominator = self.denominator * rhs;
+        self.denominator *= rhs;
         self.reduce()
     }
 
@@ -132,14 +132,14 @@ impl Fraction {
 
     /// Consuming floor operation that "truncates" the fraction to a whole number
     pub fn floor(mut self) -> Self {
-        self.numerator = self.numerator / self.denominator;
+        self.numerator /= self.denominator;
         self.denominator = 1;
         self
     }
 
     pub fn ceiling(mut self) -> Self {
         if !self.is_whole() {
-            self.numerator = (&self.numerator / &self.denominator) + (1 * self.numerator.signum());
+            self.numerator = (self.numerator / self.denominator) + self.numerator.signum();
             self.denominator = 1;
             self
         } else {
@@ -160,10 +160,10 @@ impl Fraction {
     pub fn match_denominator(&mut self, other: &mut Fraction) {
         if self.denominator != other.denominator {
             let orig_denom = self.denominator;
-            self.denominator = self.denominator * other.denominator;
-            self.numerator = self.numerator * other.denominator;
-            other.denominator = orig_denom * other.denominator;
-            other.numerator = other.numerator * orig_denom;
+            self.denominator *= other.denominator;
+            self.numerator *= other.denominator;
+            other.denominator *= orig_denom;
+            other.numerator *= orig_denom;
         }
     }
 
@@ -173,8 +173,8 @@ impl Fraction {
     fn reduce(mut self) -> Self {
         if self.numerator != 0 && self.denominator != 1 {
             let gcd = Self::gcd_i64(self.numerator, self.denominator);
-            self.numerator = self.numerator / gcd;
-            self.denominator = self.denominator / gcd;
+            self.numerator /= gcd;
+            self.denominator /= gcd;
         }
 
         if self.denominator < 0 {
@@ -192,9 +192,7 @@ impl Fraction {
         if self.numerator != 0 {
             // If the numerator is 0, flipping it will make this fraction undefined. For my use
             // case, having 0/1 flip to 0/1 is desirable behavior.
-            let temp = self.numerator;
-            self.numerator = self.denominator;
-            self.denominator = temp;
+            std::mem::swap(&mut self.numerator, &mut self.denominator);
             if self.denominator < 0 {
                 // Move up negative sign to numerator
                 self.denominator = -self.denominator;
@@ -219,12 +217,9 @@ impl Fraction {
     /// Checks if the given fraction is a whole number, returns true if it is, false otherwise
     pub fn is_whole(&self) -> bool {
         if self.denominator == 1 {
-            true
-        } else if self.numerator == 0 {
-            true
-        } else {
-            false
+            return true;
         }
+        self.numerator == 0
     }
 } // End impl Fraction
 
@@ -249,7 +244,7 @@ impl PartialEq for Fraction {
         if self.numerator == 0 && other.numerator == 0 {
             true
         } else {
-            (&self.numerator == &other.numerator) && (&self.denominator == &other.denominator)
+            (self.numerator == other.numerator) && (self.denominator == other.denominator)
         }
     }
 }
@@ -282,7 +277,7 @@ impl Neg for &Fraction {
     type Output = Fraction;
 
     fn neg(self) -> Self::Output {
-        self.clone().negate()
+        (*self).negate()
     }
 }
 
@@ -296,8 +291,7 @@ impl NaturalMod<i64> for Fraction {
 
 impl<T: Into<i64> + std::fmt::Debug> From<T> for Fraction {
     fn from(num: T) -> Self {
-        let f = Fraction::new(num.into(), 1);
-        return f;
+        Fraction::new(num.into(), 1)
     }
 }
 

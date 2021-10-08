@@ -22,7 +22,7 @@ impl Polynomial {
     /// polynomial that runs through those points. Will return an error if there's not enough
     /// pointes to satisfy the @degree requested. If the degree is not to be known, it can be set
     /// to @points.len() - 1
-    pub fn from_points(points: &Vec<Point>, degree: usize) -> Result<Self, Error> {
+    pub fn from_points(points: &[Point], degree: usize) -> Result<Self, Error> {
         let mut temp_polys: Vec<Polynomial> = Vec::with_capacity(degree + 1);
         let mut lagrange_polys: Vec<Polynomial> = Vec::with_capacity(degree + 1);
 
@@ -47,7 +47,7 @@ impl Polynomial {
                 }
             }
             // Get the product of the polynomials and scale by the y value
-            lagrange_polys.push(vec_product(&temp_polys).scale(points[j].y().clone()));
+            lagrange_polys.push(vec_product(&temp_polys).scale(points[j].y()));
             temp_polys.clear();
         }
 
@@ -166,7 +166,7 @@ impl Polynomial {
     pub fn scale<T: Into<Fraction>>(mut self, scalar: T) -> Self {
         let scalar = scalar.into();
         for index in 0..self.terms.len() {
-            self.terms[index as usize] = &self.terms[index as usize] * &scalar;
+            self.terms[index as usize] = &self.terms[index as usize] * scalar;
         }
         self
     }
@@ -233,7 +233,7 @@ impl std::fmt::Display for Polynomial {
             }
         }
 
-        if &out[..] == "" {
+        if out[..].is_empty() {
             out.push_str("0x^0");
         }
 
@@ -272,6 +272,7 @@ impl PartialEq for Polynomial {
 
 impl Eq for Polynomial {}
 
+#[derive(Default)]
 pub struct PolynomialBuilder {
     polynomial: Polynomial,
 }
@@ -306,7 +307,7 @@ impl PolynomialBuilder {
         self
     }
     pub fn build(&mut self) -> Polynomial {
-        std::mem::replace(&mut self.polynomial, Default::default())
+        std::mem::take(&mut self.polynomial)
     }
 }
 
@@ -341,23 +342,23 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 // Used to cleanup code in from_points
-fn vec_product(vec: &Vec<Polynomial>) -> Polynomial {
-    if vec.len() == 0 {
+fn vec_product(vec: &[Polynomial]) -> Polynomial {
+    if vec.is_empty() {
         return Default::default();
     }
 
     let mut product = vec[0].clone();
-    for index in 1..vec.len() {
-        product = product * &vec[index];
+    for item in vec.iter().skip(1) {
+        product = product * item;
     }
     product
 }
 
 // Used to cleanup code in from_points
-fn vec_sum(vec: &Vec<Polynomial>) -> Polynomial {
+fn vec_sum(vec: &[Polynomial]) -> Polynomial {
     let mut sum = Polynomial::default();
-    for index in 0..vec.len() {
-        sum = sum + &vec[index];
+    for item in vec {
+        sum = sum + item;
     }
     sum
 }
@@ -469,8 +470,8 @@ mod test {
             .build();
 
         assert_eq!(&poly * &poly2, Polynomial::default());
-        assert_eq!(&poly + &poly2, poly2.clone());
-        assert_eq!(&poly2 - &poly, poly2.clone());
+        assert_eq!(&poly + &poly2, poly2);
+        assert_eq!(&poly2 - &poly, poly2);
         assert_eq!(&poly, &-&poly);
     }
 
