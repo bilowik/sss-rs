@@ -27,7 +27,7 @@ let verify = true;
 let secret: Vec<u8> = vec![5, 4, 9, 1, 2, 128, 43];
 let shares = share(Secret::InMemory(secret), shares_required, shares_to_create, verify).unwrap();
 let mut recon = Secret::empty_in_memory();
-recon.reconstruct(shares);
+reconstruct(&mut recon, shares);
 assert_eq!(secret, recon.unwrap_vec());
 ```
 
