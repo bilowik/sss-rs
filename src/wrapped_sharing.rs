@@ -232,9 +232,9 @@ impl std::iter::Iterator for SecretIterator {
 ///
 /// **verify**: If true, a hash is calculated from the secret and placed at the end to be used
 ///             to verify reconstruction of the secret.
-pub fn share_to_writables(
+pub fn share_to_writables<'a>(
     secret: Secret,
-    mut dests: &mut Vec<Box<dyn Write>>,
+    mut dests: &mut Vec<Box<dyn Write + 'a>>,
     shares_required: u8,
     shares_to_create: u8,
     verify: bool,
@@ -242,7 +242,7 @@ pub fn share_to_writables(
     // This just writes each corresponding share_list in share_lists to a dest in dests. This
     // is written here as a closure since it's used at two different points in this function
     let share_lists_to_dests =
-        |lists: Vec<Vec<(u8, u8)>>, mut dests: &mut Vec<Box<dyn Write>>| -> Result<(), Error> {
+        |lists: Vec<Vec<(u8, u8)>>, mut dests: &mut Vec<Box<dyn Write + 'a>>| -> Result<(), Error> {
             for (share_list, dest) in lists.into_iter().zip((&mut dests).into_iter()) {
                 dest.write_all(
                     share_list
@@ -393,9 +393,9 @@ pub fn reconstruct(secret: &mut Secret, srcs: Vec<Vec<u8>>, verify: bool) -> Res
 /// Reconstructs a secret from a given list of srcs. The srcs should all read the same number
 /// of bytes.
 /// **src_len** MUST be an accurate length of the shares
-pub fn reconstruct_from_srcs(
+pub fn reconstruct_from_srcs<'a>(
     secret: &mut Secret,
-    mut srcs: &mut Vec<Box<dyn Read>>,
+    mut srcs: &mut Vec<Box<dyn Read + 'a>>,
     src_len: u64,
     verify: bool,
 ) -> Result<(), Error> {
@@ -404,7 +404,7 @@ pub fn reconstruct_from_srcs(
         vec.into_iter().map(|val| (segment_num, val)).collect()
     };
     let get_shares = |num_bytes: usize,
-                      srcs: &mut Vec<Box<dyn Read>>,
+                      srcs: &mut Vec<Box<dyn Read + 'a>>,
                       x_vals: &Vec<u8>|
      -> Result<Vec<Vec<(u8, u8)>>, Error> {
         let mut segments: Vec<Vec<(u8, u8)>> = Vec::with_capacity(srcs.len());
