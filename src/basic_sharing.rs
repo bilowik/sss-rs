@@ -34,13 +34,14 @@ pub fn from_secret(
     // Use the given rng or if none was given, use from entropy
     let mut shares: Vec<(u8, u8)> = Vec::with_capacity(shares_to_create as usize);
     let mut share_poly = GaloisPolynomial::new();
+    let mut rng: Box<dyn RngCore> = match rand {
+        Some(rng) => Box::new(rng), 
+        None => Box::new(StdRng::from_entropy()), 
+    };
 
     share_poly.set_coeff(Coeff(secret), 0);
     for i in 1..shares_required {
-        let curr_co = match rand {
-            Some(ref mut rng) => rng.gen_range(2, 255),
-            None => StdRng::from_entropy().gen_range(2, 255),
-        };
+        let curr_co = rng.gen_range(2, 255);
         share_poly.set_coeff(Coeff(curr_co), i as usize);
     }
 
