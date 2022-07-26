@@ -1,3 +1,8 @@
+## sss-rs 0.9.1 07/25/2022
+ - Avoid reseeding from entropy when no rng is specified when sharing
+    - Depending on the source of the entropy this may make sharing 
+	  noticeably faster.
+
 ## sss-rs 0.9.0 07/09/2021
  - Move out reconstruction functions out of Secret impl block, for consistency with the sharing 
    functions.
