@@ -1,5 +1,5 @@
 # sss-rs
-[![Build Status](https://travis-ci.com/bilowik/sss-rs.svg?branch=master)](https://travis-ci.com/bilowik/sss-rs)
+[![Rust](https://github.com/bilowik/sss-rs/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/bilowik/sss-rs/actions/workflows/rust.yml)
 
 An implementation of a secret sharing scheme in Rust. 
 
