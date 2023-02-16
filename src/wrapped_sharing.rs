@@ -491,9 +491,7 @@ pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: T, srcs: &[Vec<u8>], v
         .into_iter()
         .map(|share| Box::new(Cursor::new(share)) as Box<dyn Read>)
         .collect();
-    unsafe {
-        reconstruct_from_srcs(secret, &mut srcs, src_len, verify)
-    }
+    reconstruct_from_srcs(secret, &mut srcs, src_len, verify)
 }
 
 
@@ -506,9 +504,7 @@ pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
         .into_iter()
         .map(|share| Box::new(Cursor::new(share)) as Box<dyn Read>)
         .collect();
-    unsafe {
-        reconstruct_from_srcs(&mut buf, &mut srcs, src_len, verify)?;
-    }
+    reconstruct_from_srcs(&mut buf, &mut srcs, src_len, verify)?;
     Ok(buf.into_inner())
 }
 
@@ -518,7 +514,7 @@ pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
 /// Will rewind() secrets
 ///
 /// **src_len** MUST be an accurate length of the shares
-pub unsafe fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
+pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     mut secret: T,
     srcs: &mut Vec<Box<dyn Read + 'a>>,
     src_len: u64,
@@ -639,9 +635,7 @@ pub fn reconstruct_from_files<T: AsRef<Path>, U: Read + Write + Seek>(
     let mut secret_path = dir.as_ref().to_path_buf();
     secret_path.push(stem);
 
-    unsafe { 
-        reconstruct_from_srcs(secret, &mut share_files, len, verify)
-    }
+    reconstruct_from_srcs(secret, &mut share_files, len, verify)
 }
 
 #[derive(Debug)]
