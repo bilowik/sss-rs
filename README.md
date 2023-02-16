@@ -20,15 +20,14 @@ will increase reconstruction time). This goes for both **wrapped_sharing** and *
 
 ## Example with the wrapped_sharing API
 ```rust
-use wrapped_sharing::{Secret, share};
+use wrapped_sharing::{share, reconstruct};
 let shares_required = 3;
 let shares_to_create = 3;
 let verify = true;
 let secret: Vec<u8> = vec![5, 4, 9, 1, 2, 128, 43];
-let shares = share(Secret::InMemory(secret), shares_required, shares_to_create, verify).unwrap();
-let mut recon = Secret::empty_in_memory();
-reconstruct(&mut recon, shares);
-assert_eq!(secret, recon.unwrap_vec());
+let shares = share(&secret, shares_required, shares_to_create, verify).unwrap();
+let recon = reconstruct(&shares, verify).unwrap();
+assert_eq!(secret, recon);
 ```
 
 
@@ -41,10 +40,12 @@ let secret: u8 = 23; // The secret to be split into shares
 let shares_required = 3; // The number of shares required to reconstruct the secret
 let shares_to_create = 3; // The number of shares to create, can be greater than the required
 
-let shares: Vec<(u8, u8)> = from_secret(secret,
-							shares_required,
-							shares_to_create,
-							Some(rand)).unwrap();
+let shares: Vec<(u8, u8)> = from_secret(
+		secret,
+		shares_required,
+		shares_to_create,
+		Some(rand)
+	).unwrap();
 let secret_recon = reconstruct_secret(shares);
 
 assert_eq!(secret, secret_recon);
