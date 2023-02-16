@@ -1,7 +1,7 @@
 [package]
 name = "sss-rs"
-version = "0.9.1"
-authors = ["Aaron Flores <aaronjflores962@gmail.com"]
+version = "0.10.0"
+authors = ["bilowik"]
 edition = "2018"
 description = "A secret sharing scheme implemented in Rust"
 repository = "https://github.com/bilowik/sss-rs"

@@ -1,3 +1,11 @@
+## sss-rs 0.10.0 02/15/2023
+ - Breaking changes, but for the sake of MUCH simpler usage
+ - Deprecating `Secret`, it is no longer required to use the library, but can still be used for compatibility.
+ - `share()` and `reconstruct()` have been renamed to `share_from_buf()` and `reconstruct_to_buf()` respectively
+    - They also now take a generic T for any `T: Read + Seek` for sharing and `T: Read + Write + Seek` for reconstructing. This
+      includes the now deprecated Secret enum which implements these traits.
+ - Implement new, straightforward-to-use `share()` and `reconstruct()` functions (see README.md for example usage)
+
 ## sss-rs 0.9.1 07/25/2022
  - Avoid reseeding from entropy when no rng is specified when sharing
     - Depending on the source of the entropy this may make sharing 
