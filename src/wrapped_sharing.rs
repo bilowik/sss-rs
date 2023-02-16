@@ -485,7 +485,7 @@ pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
 /// **verify**: If true, a hash is assumed to exist at the end of the secret and will be used
 ///             to verify secret reconstruction. NOTE: This will fail if the secret was not
 ///             shared with verify set to true.
-pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: &mut T, srcs: Vec<Vec<u8>>, verify: bool) -> Result<(), Error> {
+pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: T, srcs: &[Vec<u8>], verify: bool) -> Result<(), Error> {
     let src_len = srcs[0].len() as u64;
     let mut srcs = srcs
         .into_iter()
@@ -496,7 +496,7 @@ pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: &mut T, srcs: Vec<Vec<
 
 
 /// Reconstructs a secret to a vec
-pub fn reconstruct(srcs: Vec<Vec<u8>>, verify: bool) -> Result<Vec<u8>, Error> {
+pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
     let len = srcs.get(0).ok_or(Error::InvalidNumberOfShares(0))?.len();
     let mut buf = Cursor::new(Vec::with_capacity(len));
     let src_len = srcs[0].len() as u64;
@@ -795,7 +795,7 @@ mod tests {
         )
         .unwrap();
         let mut recon = Secret::empty_in_memory();
-        reconstruct_to_buf(&mut recon, shares, true).unwrap();
+        reconstruct_to_buf(&mut recon, &shares, true).unwrap();
 
         assert_eq!(secret, recon.unwrap_vec());
     }
@@ -814,7 +814,7 @@ mod tests {
         .unwrap();
         shares.as_mut_slice().shuffle(&mut thread_rng());
         let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
-        reconstruct_to_buf(&mut recon_secret, shares[0..3].to_vec(), true).unwrap();
+        reconstruct_to_buf(&mut recon_secret, &shares[0..3], true).unwrap();
 
         assert_eq!(secret, recon_secret.unwrap_vec());
     }
@@ -831,7 +831,7 @@ mod tests {
             true,
         )
         .unwrap();
-        let recon_secret = reconstruct(shares[0..3].to_vec(), true).unwrap();
+        let recon_secret = reconstruct(&shares[0..3], true).unwrap();
 
         assert_eq!(secret, recon_secret);
 
@@ -849,7 +849,7 @@ mod tests {
             false,
         )
         .unwrap();
-        let recon_secret = reconstruct(shares[0..3].to_vec(), false).unwrap();
+        let recon_secret = reconstruct(&shares[0..3], false).unwrap();
 
         assert_eq!(secret, recon_secret);
 
