@@ -305,6 +305,8 @@ impl<'a> std::iter::Iterator for SecretIterator<'a> {
 /// secret and calculates the share lists in chunks and writes the shares to their respective
 /// destinations
 ///
+/// secret will have rewind() called on it
+///
 /// **verify**: If true, a hash is calculated from the secret and placed at the end to be used
 ///             to verify reconstruction of the secret.
 pub fn share_to_writables<'a, T: Read + Seek>(
@@ -382,16 +384,29 @@ pub fn share_to_writables<'a, T: Read + Seek>(
     Ok(())
 }
 
+
+pub fn share(
+    secret: &[u8],
+    shares_required: u8,
+    shares_to_create: u8,
+    verify: bool,
+) -> Result<Vec<Vec<u8>>, Error> {
+    share_from_buf(Cursor::new(secret), shares_required, shares_to_create, verify)
+}
+
 // TODO: Optimize me, there is a full copy that's done on all the shares, there must be a way to
 // avoid this.
 /// Creates the shares and places them into a Vec of Vecs. This wraps around
 /// [share_to_writables].
-pub fn share<T: Read + Seek>(
+///
+/// secret will have rewind() called on it
+pub fn share_from_buf<T: Read + Seek>(
     mut secret: T,
     shares_required: u8,
     shares_to_create: u8,
     verify: bool,
 ) -> Result<Vec<Vec<u8>>, Error> {
+    secret.rewind()?;
     let share_len = secret.len()? + 1 + 64;
     if share_len > std::usize::MAX as u64 {
         return Err(Error::SecretTooLarge(secret.len()?));
@@ -458,10 +473,12 @@ pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
 
 /// Reconstructs a secret from a given list of shares.
 ///
+/// Will rewind() secret
+///
 /// **verify**: If true, a hash is assumed to exist at the end of the secret and will be used
 ///             to verify secret reconstruction. NOTE: This will fail if the secret was not
 ///             shared with verify set to true.
-pub fn reconstruct<T: Read + Write + Seek>(secret: &mut T, srcs: Vec<Vec<u8>>, verify: bool) -> Result<(), Error> {
+pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: &mut T, srcs: Vec<Vec<u8>>, verify: bool) -> Result<(), Error> {
     let src_len = srcs[0].len() as u64;
     let mut srcs = srcs
         .into_iter()
@@ -470,8 +487,25 @@ pub fn reconstruct<T: Read + Write + Seek>(secret: &mut T, srcs: Vec<Vec<u8>>, v
     reconstruct_from_srcs(secret, &mut srcs, src_len, verify)
 }
 
+
+/// Reconstructs a secret to a vec
+pub fn reconstruct(srcs: Vec<Vec<u8>>, verify: bool) -> Result<Vec<u8>, Error> {
+    let len = srcs.get(0).ok_or(Error::InvalidNumberOfShares(0))?.len();
+    let mut buf = Cursor::new(Vec::with_capacity(len));
+    let src_len = srcs[0].len() as u64;
+    let mut srcs = srcs
+        .into_iter()
+        .map(|share| Box::new(Cursor::new(share)) as Box<dyn Read>)
+        .collect();
+    reconstruct_from_srcs(&mut buf, &mut srcs, src_len, verify)?;
+    Ok(buf.into_inner())
+}
+
+
 /// Reconstructs a secret from a given list of srcs. The srcs should all read the same number
 /// of bytes.
+/// Will rewind() secrets
+///
 /// **src_len** MUST be an accurate length of the shares
 pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     secret: &mut T,
@@ -479,6 +513,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     src_len: u64,
     verify: bool,
 ) -> Result<(), Error> {
+    secret.rewind()?;
     // This is to avoid multiple reference issues.
     let to_points = |vec: Vec<u8>, segment_num: u8| -> Vec<(u8, u8)> {
         vec.into_iter().map(|val| (segment_num, val)).collect()
@@ -743,7 +778,7 @@ mod tests {
     fn zero_test() {
         let num_shares = 3;
         let secret: Vec<u8> = vec![0];
-        let shares = share(
+        let shares = share_from_buf(
             Secret::InMemory(Cursor::new(secret.clone())),
             num_shares,
             num_shares,
@@ -751,7 +786,7 @@ mod tests {
         )
         .unwrap();
         let mut recon = Secret::empty_in_memory();
-        reconstruct(&mut recon, shares, true).unwrap();
+        reconstruct_to_buf(&mut recon, shares, true).unwrap();
 
         assert_eq!(secret, recon.unwrap_vec());
     }
@@ -761,7 +796,7 @@ mod tests {
         let secret = vec![10, 20, 30, 50];
         let num_shares = 6;
         let num_shares_required = 3;
-        let mut shares = share(
+        let mut shares = share_from_buf(
             Secret::InMemory(Cursor::new(secret.clone())),
             num_shares_required,
             num_shares,
@@ -770,8 +805,26 @@ mod tests {
         .unwrap();
         shares.as_mut_slice().shuffle(&mut thread_rng());
         let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
-        reconstruct(&mut recon_secret, shares[0..3].to_vec(), true).unwrap();
+        reconstruct_to_buf(&mut recon_secret, shares[0..3].to_vec(), true).unwrap();
 
         assert_eq!(secret, recon_secret.unwrap_vec());
+    }
+
+    #[test]
+    fn without_secret_struct() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 6;
+        let num_shares_required = 3;
+        let shares = share(
+            &secret,
+            num_shares_required,
+            num_shares,
+            true,
+        )
+        .unwrap();
+        let recon_secret = reconstruct(shares[0..3].to_vec(), true).unwrap();
+
+        assert_eq!(secret, recon_secret);
+
     }
 }
