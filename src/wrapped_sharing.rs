@@ -20,6 +20,7 @@ pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal per
 /// For example, setting it to empty in memory, and then reconstructing it, will place
 /// the reconstructed value in memory, whereas setting it to a file will place it
 /// in the path of the given file.
+#[deprecated(since="0.10.0", note="Pass Vec<u8>, File, or any `T: Read + Write + Seek` directly")]
 #[derive(Debug)]
 pub enum Secret {
     InMemory(Cursor<Vec<u8>>),
@@ -66,6 +67,7 @@ impl<T: Read + Seek> SecretTrait for T {
     }
 }
 
+#[allow(deprecated)]
 impl Read for Secret {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         match self {
@@ -78,6 +80,7 @@ impl Read for Secret {
         }
     }
 }
+#[allow(deprecated)]
 impl Seek for Secret {
     fn seek(&mut self, pos: std::io::SeekFrom) -> Result<u64, std::io::Error> {
         match self {
@@ -91,6 +94,7 @@ impl Seek for Secret {
     }
 }
 
+#[allow(deprecated)]
 impl Write for Secret {
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         match self {
@@ -114,6 +118,8 @@ impl Write for Secret {
     }
 }
 
+#[allow(deprecated)]
+#[deprecated(since="0.10.0", note="Pass Vec<u8>, File, or any `T: Read + Write + Seek` directly")]
 impl Secret {
     /// Constructs an empty vec for the secret.
     pub fn empty_in_memory() -> Self {
@@ -262,6 +268,7 @@ pub struct SecretIterator<'a>{
     reader: Box<dyn Read + 'a>, // reader is a reader of the vec in secret, or it's to an open file
 }
 
+#[allow(deprecated)]
 impl<'a> std::iter::IntoIterator for &'a mut Secret {
     type Item = Result<Vec<u8>, Error>;
     type IntoIter = SecretIterator<'a>;
@@ -508,7 +515,7 @@ pub fn reconstruct(srcs: Vec<Vec<u8>>, verify: bool) -> Result<Vec<u8>, Error> {
 ///
 /// **src_len** MUST be an accurate length of the shares
 pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
-    secret: &mut T,
+    mut secret: T,
     srcs: &mut Vec<Box<dyn Read + 'a>>,
     src_len: u64,
     verify: bool,
@@ -594,8 +601,8 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
 }
 
 /// Performs the reconstruction of the shares from files with in the given **dir** with the give **stem**
-pub fn reconstruct_from_files<T: AsRef<Path>>(
-    secret: &mut Secret,
+pub fn reconstruct_from_files<T: AsRef<Path>, U: Read + Write + Seek>(
+    secret: U,
     dir: T,
     stem: &str,
     shares_required: u8,
@@ -704,6 +711,7 @@ Calculated Hash: {}",
 
 impl std::error::Error for Error {}
 
+#[allow(deprecated)]
 impl Error {
     fn secret_file_error(_secret: &Secret, e: std::io::Error) -> Self {
         e.into()
@@ -733,6 +741,7 @@ fn generate_share_file_paths<T: AsRef<Path>>(dir: T, stem: &str, num_files: u8) 
     generated_paths
 }
 
+#[allow(deprecated)]
 #[cfg(test)]
 mod tests {
     use super::*;
