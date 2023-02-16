@@ -811,7 +811,7 @@ mod tests {
     }
 
     #[test]
-    fn without_secret_struct() {
+    fn base_functions() {
         let secret = vec![10, 20, 30, 50];
         let num_shares = 6;
         let num_shares_required = 3;
@@ -827,4 +827,24 @@ mod tests {
         assert_eq!(secret, recon_secret);
 
     }
+
+    #[test]
+    fn base_functions_no_verify() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 6;
+        let num_shares_required = 3;
+        let shares = share(
+            &secret,
+            num_shares_required,
+            num_shares,
+            false,
+        )
+        .unwrap();
+        let recon_secret = reconstruct(shares[0..3].to_vec(), false).unwrap();
+
+        assert_eq!(secret, recon_secret);
+
+    }
+
+
 }
