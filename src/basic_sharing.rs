@@ -19,7 +19,7 @@ pub fn from_secret(
     secret: u8,
     shares_required: u8,
     shares_to_create: u8,
-    mut rand: Option<&mut dyn RngCore>,
+    rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<(u8, u8)>, Error> {
     if shares_required > shares_to_create {
         return Err(Error::UnreconstructableSecret(
