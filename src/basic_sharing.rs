@@ -41,7 +41,7 @@ pub fn from_secret(
 
     share_poly.set_coeff(Coeff(secret), 0);
     for i in 1..shares_required {
-        let curr_co = rng.gen_range(2, 255);
+        let curr_co = rng.gen_range(2..255);
         share_poly.set_coeff(Coeff(curr_co), i as usize);
     }
 
@@ -301,9 +301,9 @@ mod tests {
         let mut rand = StdRng::seed_from_u64(123u64);
 
         for _ in 0..num_iters {
-            let secret: u8 = rand.gen_range(1, 256) as u8;
-            let shares_required: u8 = rand.gen_range(2, 10);
-            let shares_to_create: u8 = shares_required + rand.gen_range(0, 6);
+            let secret: u8 = rand.gen_range(1..256) as u8;
+            let shares_required: u8 = rand.gen_range(2..10);
+            let shares_to_create: u8 = shares_required + rand.gen_range(0..6);
 
             basic_single_value(secret, shares_to_create, shares_required);
         }
