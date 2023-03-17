@@ -1,6 +1,4 @@
 use crate::basic_sharing::{from_secrets, reconstruct_secrets};
-use sha3::digest::generic_array::GenericArray;
-use sha3::digest::FixedOutput;
 use sha3::Digest;
 use std::convert::TryFrom;
 use std::fs::File;
@@ -38,7 +36,6 @@ trait SecretTrait {
 
 impl<T: Read + Seek> SecretTrait for T {
     fn calculate_hash(&mut self) -> Result<Vec<u8>, Error> {
-        let mut hasher_output = *GenericArray::from_slice(&[0u8; 64]);
         let mut hasher = sha3::Sha3_512::new();
         let len = self.len()?;
         let hash_input_num_bytes = if len < (NUM_FIRST_BYTES_FOR_VERIFY as u64) {
@@ -51,7 +48,7 @@ impl<T: Read + Seek> SecretTrait for T {
         self.take(hash_input_num_bytes as u64)
             .read_to_end(&mut input_vec)?;
         hasher.update(input_vec.as_slice());
-        hasher.finalize_into(&mut hasher_output);
+        let hasher_output = hasher.finalize();
         Ok(hasher_output.to_vec())
     }
 
