@@ -3,11 +3,12 @@
    - This is mostly for correctness and for debugging. The only time this issue would be noticeable is if 
      an shorter `src_len` than expected was provided during reconstruction, which would result in more than
      the final 64-bytes being pulled for hash comparison. 
+ - Dependency update and cleanup
 
 
 ## sss-rs 0.10.0 02/15/2023
  - Breaking changes, but for the sake of MUCH simpler usage
- - Deprecating `Secret`, it is no longer required to use the library, but can still be used for compatibility.
+ - Deprecate `Secret`, it is no longer required to use the library, but can still be used for compatibility.
  - `share()` and `reconstruct()` have been renamed to `share_from_buf()` and `reconstruct_to_buf()` respectively
     - They also now take a generic T for any `T: Read + Seek` for sharing and `T: Read + Write + Seek` for reconstructing. This
       includes the now deprecated Secret enum which implements these traits.
