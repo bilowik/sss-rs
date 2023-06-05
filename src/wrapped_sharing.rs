@@ -583,7 +583,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
 
     if verify {
         // Now read in the hash
-        let hash_segments = get_shares(512, srcs, &x_vals)?;
+        let hash_segments = get_shares(64, srcs, &x_vals)?;
         let recon_hash = reconstruct_secrets(hash_segments)?;
         // Drop dest since if it is a file, we will be re-opening it to read from it to
         // calculate the hash. Ensure output is flushed
