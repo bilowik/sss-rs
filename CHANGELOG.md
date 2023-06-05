@@ -1,3 +1,10 @@
+## sss-rs 0.10.1 06/05/2023
+ - Fix an issue where the hash length was not being calculated correctly during reconstruction
+   - This is mostly for correctness and for debugging. The only time this issue would be noticeable is if 
+     an shorter `src_len` than expected was provided during reconstruction, which would result in more than
+     the final 64-bytes being pulled for hash comparison. 
+
+
 ## sss-rs 0.10.0 02/15/2023
  - Breaking changes, but for the sake of MUCH simpler usage
  - Deprecating `Secret`, it is no longer required to use the library, but can still be used for compatibility.
