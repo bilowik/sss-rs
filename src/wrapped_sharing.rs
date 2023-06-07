@@ -518,6 +518,11 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     verify: bool,
 ) -> Result<(), Error> {
     secret.rewind()?;
+    
+    if (src_len < 2) || (verify & (src_len < 66)) {
+        return Err(Error::NotEnoughBytesInSrc(src_len));
+    }
+
     // This is to avoid multiple reference issues.
     let to_points = |vec: Vec<u8>, segment_num: u8| -> Vec<(u8, u8)> {
         vec.into_iter().map(|val| (segment_num, val)).collect()
@@ -647,6 +652,7 @@ pub enum Error {
     FileError(String, std::io::Error),
     IOError(std::io::Error),
     OtherSharingError(crate::basic_sharing::Error),
+    NotEnoughBytesInSrc(u64),
 }
 
 impl From<crate::basic_sharing::Error> for Error {
@@ -701,6 +707,14 @@ Calculated Hash: {}",
             }
             Error::OtherSharingError(source) => {
                 write!(f, "{}", source)
+            }
+            Error::NotEnoughBytesInSrc(bytes) => {
+                write!(
+                    f, 
+                   "The given length ({}) is not long enough for reconstruction, must be >65 if verify, else >2", 
+                   bytes 
+                )
+
             }
         }
     }
