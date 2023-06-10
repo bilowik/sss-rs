@@ -104,20 +104,13 @@ pub fn from_secrets(
         }
     };
 
-    let mut list_of_share_lists: Vec<Vec<(u8, u8)>> = Vec::with_capacity(secret.len());
+    let mut list_of_share_lists: Vec<Vec<(u8, u8)>> = (0..shares_to_create).map(|_| Vec::with_capacity(secret.len())).collect();
 
     for s in secret {
-        match from_secret(*s, shares_required, shares_to_create, Some(&mut rand)) {
-            Ok(shares) => {
-                // Now this list needs to be transposed:
-                list_of_share_lists.push(shares);
-            }
-            Err(e) => {
-                return Err(e);
-            }
+        for (idx, share) in from_secret(*s, shares_required, shares_to_create, Some(&mut rand))?.into_iter().enumerate() {
+            list_of_share_lists[idx].push(share);
         }
     }
-    let list_of_share_lists = transpose_vec_matrix(list_of_share_lists).unwrap();
     Ok(list_of_share_lists)
 }
 
@@ -135,13 +128,9 @@ pub fn from_secrets(
 ///     of the secret.
 ///
 /// *For the rest of the arguments, see [reconstruct_secret]*
-pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Result<Vec<u8>, Error> {
-    let mut secrets: Vec<u8> = Vec::with_capacity(share_lists[0].len());
-    let share_lists = transpose_vec_matrix(share_lists)?;
-    for point_list in share_lists {
-        secrets.push(reconstruct_secret(point_list));
-    }
-    Ok(secrets)
+pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Vec<u8> {
+    let len = share_lists[0].len();
+    (0..len).map(|idx| reconstruct_secret(share_lists.iter().map(|s| s[idx]).collect())).collect()
 }
 
 /// Wrapper around its corresponding share function, this simply uses the [reduce_share]
@@ -191,7 +180,7 @@ pub fn from_secrets_no_points(
 /// meant to mix with the other raw_share functions and vice-versa.
 ///
 /// See [reconstruct_secrets] for more documentation.
-pub fn reconstruct_secrets_no_points(share_lists: Vec<Vec<u8>>) -> Result<Vec<u8>, Error> {
+pub fn reconstruct_secrets_no_points(share_lists: Vec<Vec<u8>>) -> Vec<u8> {
     reconstruct_secrets(share_lists.into_iter().map(expand_share).collect())
 }
 
@@ -369,7 +358,7 @@ mod tests {
         let secret = vec![10, 20, 30, 40, 50];
         let n = 3;
         let shares = from_secrets_no_points(&secret, n, n, None).unwrap();
-        let recon = reconstruct_secrets_no_points(shares).unwrap();
+        let recon = reconstruct_secrets_no_points(shares);
         assert_eq!(secret, recon);
     }
 }

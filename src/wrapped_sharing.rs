@@ -581,7 +581,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
             let segments = get_shares(segment_size, srcs, &x_vals)?;
             // Now segments has a segment from each share src, reconstruct the secret up to that
             // point and write it to the destination
-            secret.write_all(reconstruct_secrets(segments)?.as_slice())?;
+            secret.write_all(reconstruct_secrets(segments).as_slice())?;
             curr_len = curr_len.saturating_sub(READ_SEGMENT_SIZE as u64);
         }
     }
@@ -589,7 +589,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     if verify {
         // Now read in the hash
         let hash_segments = get_shares(64, srcs, &x_vals)?;
-        let recon_hash = reconstruct_secrets(hash_segments)?;
+        let recon_hash = reconstruct_secrets(hash_segments);
         // Drop dest since if it is a file, we will be re-opening it to read from it to
         // calculate the hash. Ensure output is flushed
         secret.flush().ok();
