@@ -1,5 +1,5 @@
 use crate::basic_sharing::{from_secrets, reconstruct_secrets};
-use sha3::Digest;
+use sha3::{Digest, Sha3_512};
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{Cursor, Read, Write, Seek, SeekFrom};
@@ -7,6 +7,73 @@ use std::path::Path;
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
+
+
+
+
+
+pub struct Sharer<'a> {
+    share_outputs: Vec<Box<dyn Write + 'a>>,
+    bytes_shared: u64,
+    hasher: Option<Sha3_512>,
+    hash_op: fn(&mut Option<Sha3_512>, &[u8]),
+}
+
+pub struct SharerBuilder<'a> {
+    hasher: Option<Sha3_512>,
+    share_outputs: Vec<Box<dyn Write + 'a>>,
+
+}
+
+impl<'a> SharerBuilder<'a> {
+    pub fn new() -> Self {
+        Self {
+            hasher: None,
+            share_outputs: Vec::with_capacity(2),
+        }
+    }
+
+    pub fn with_output<T: Write + 'a>(mut self, output: T) -> Self {
+        self.share_outputs.push(Box::new(output) as Box<dyn Write + 'a>);
+        self
+    }
+
+    pub fn verify(mut self, verify: bool) -> Self {
+        self.hasher = verify.then_some(Sha3_512::new());
+        self
+    }
+
+    pub fn build(self) -> Sharer<'a> {
+        let hash_op = if self.hasher.is_some() {
+            add_to_hash
+        }
+        else {
+            noop_hash
+
+        };
+        Sharer {
+            share_outputs: self.share_outputs,
+            bytes_shared: 0,
+            hasher: self.hasher,
+            hash_op,
+
+        }
+    }
+}
+
+impl<'a> Sharer<'a> {
+    pub fn builder() -> SharerBuilder<'a> {
+        SharerBuilder::new() 
+    }
+}
+
+fn add_to_hash(hasher: &mut Option<Sha3_512>, bytes: &[u8]) {
+    hasher.as_mut().unwrap().update(bytes);
+}
+
+fn noop_hash(_hasher: &mut Option<Sha3_512>, _bytes: &[u8]) {
+
+}
 
 
 trait SecretTrait {
