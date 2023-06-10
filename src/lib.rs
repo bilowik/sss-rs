@@ -1,4 +1,4 @@
 pub mod basic_sharing;
+#[allow(dead_code)] 
 mod geometry;
-mod utils;
 pub mod wrapped_sharing;

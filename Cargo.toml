@@ -22,3 +22,10 @@ sha3 = "^0.10.6"
 rand_chacha = "^0.3.1"
 hex = "^0.4.3"
 galois_2p8 = "^0.1.2"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "basic_sharing"
+harness = false
