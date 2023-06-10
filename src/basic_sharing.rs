@@ -154,18 +154,46 @@ pub fn from_secrets_no_points(
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<u8>>, Error> {
-    Ok(
-        from_secrets(secret, shares_required, shares_to_create, rand)?
-            .into_iter()
-            .map(reduce_share)
-            .map(|(x, ys)| {
-                let mut new_share = Vec::with_capacity(ys.len() + 1);
-                new_share.push(x);
-                new_share.extend_from_slice(ys.as_slice());
-                new_share
-            })
-            .collect(),
-    )
+    if shares_required > shares_to_create {
+        return Err(Error::UnreconstructableSecret(
+            shares_to_create,
+            shares_required,
+        ));
+    }
+
+    if shares_to_create < 2 {
+        return Err(Error::InvalidNumberOfShares(shares_to_create));
+    }
+
+    let mut rng: Box<dyn RngCore> = match rand {
+        Some(rng) => Box::new(rng), 
+        None => Box::new(StdRng::from_entropy()), 
+    };
+
+    // Create the vecs
+    let mut shares_list = (0..shares_to_create).map(|_| Vec::with_capacity(secret.len() + 1))
+        .enumerate()
+        .map(|(i, mut v)| {
+            v.push((i + 1) as u8); // This is the x coefficent of each share.
+            v
+        })
+    .collect::<Vec<Vec<u8>>>();
+    
+    let polys = secret.iter().map(|s| {
+        let mut share_poly = GaloisPolynomial::new();
+        share_poly.set_coeff(Coeff(*s), 0);
+        for i in 1..shares_required {
+            let curr_co = rng.gen_range(2..255);
+            share_poly.set_coeff(Coeff(curr_co), i as usize);
+        }
+        share_poly
+    }).collect::<Vec<GaloisPolynomial>>();
+    for x in 0..shares_to_create {
+        for poly in polys.iter() {
+            shares_list[x as usize].push(poly.get_y_value(x + 1));
+        }
+    }
+    Ok(shares_list)
 }
 
 /// Wrapper around its corresponding share function, it simply uses the [expand_share]
@@ -182,6 +210,7 @@ pub fn from_secrets_no_points(
 /// See [reconstruct_secrets] for more documentation.
 pub fn reconstruct_secrets_no_points(share_lists: Vec<Vec<u8>>) -> Vec<u8> {
     reconstruct_secrets(share_lists.into_iter().map(expand_share).collect())
+
 }
 
 /// This 'compresses' a share by pulling out it's X value from each point since
