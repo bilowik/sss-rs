@@ -475,6 +475,65 @@ pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
     )
 }
 
+const STATUS_U64_COUNT: usize = 4;
+const STATUS_MAX_BITS: usize = std::mem::size_of::<u64>() * STATUS_U64_COUNT * 8;
+const NUM_CHUNKS: usize = 8; // TODO: Replace me with # CPU cores.
+
+fn block_idx_to_chunk_and_inner(block_idx: usize) -> (usize, usize) {
+    (block_idx / std::mem::size_of::<u64>(), block_idx % std::mem::size_of::<u64>())
+}
+
+fn set_block_finish(block_idx: usize, block_status_bitfield: &[AtomicU64; 4]) {
+    let (chunk_idx, inner_chunk_idx) = block_idx_to_chunk_and_inner(block_idx);
+    block_status_bitfield[chunk_idx].fetch_or(1 << inner_chunk_idx, Ordering::Relaxed);
+}
+
+fn get_block_status(block_idx: usize, block_status_bitfield: &[AtomicU64; 4]) -> bool {
+    let (chunk_idx, inner_chunk_idx) = block_idx_to_chunk_and_inner(block_idx);
+    block_status_bitfield[chunk_idx].load(Ordering::Relaxed) & (1 << inner_chunk_idx) > 0 
+}
+
+use std::sync::{
+    mpsc::{Receiver, Sender, channel},
+    RwLock,
+    Arc,
+    atomic::{
+        AtomicU64,
+        Ordering,
+    },
+};
+use std::convert::TryInto;
+
+pub fn share_parallelized<'a, T: Read + Seek>(
+    mut secret: T,
+    dests: &mut Vec<Box<dyn Write + 'a>>,
+    shares_required: u8,
+    shares_to_create: u8,
+    verify: bool
+) -> Result<(), Error> {
+    //let block_status_bitfield = Arc::new([AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)]);
+    let block_status_bitfield: [AtomicU64; STATUS_U64_COUNT] = (0..STATUS_U64_COUNT).map(|_| AtomicU64::new(0))
+                                                              .collect::<Vec<_>>()
+                                                              .try_into()
+                                                              .unwrap();
+    let mut senders = Vec::with_capacity(NUM_CHUNKS);
+    for chunk_idx in 0..NUM_CHUNKS {
+        let (tx, rx) = channel::<(usize, Vec<u8>)>();
+        senders.push(tx);
+        let handle = std::thread::spawn(move || {
+            for (block_idx, bytes) in rx.recv() {
+                // do stuff
+            }
+
+        });
+        if chunk_idx == (NUM_CHUNKS - 1) {
+            handle.join().unwrap(); // TODO: Craft an error in enum Error for me.
+        }
+    }
+
+    todo!()
+}
+
 /// Reconstructs from given list of shares and writes it to secret
 ///
 /// Will rewind() secret
