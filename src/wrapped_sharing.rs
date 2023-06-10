@@ -3,27 +3,11 @@ use sha3::Digest;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{Cursor, Read, Write, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
 
-/// Contains the secret, whether in file or in memory stored in a Vec of bytes.
-///
-/// This can be used for both sharing and reconstructing. When reconstructing,
-/// you can set it to reconstruct into
-/// a Vec by setting it to InMemory, or you can set it to output to a file.
-/// For sharing, you can input a secret to be shared, either a file or a vec of bytes.
-///
-/// For example, setting it to empty in memory, and then reconstructing it, will place
-/// the reconstructed value in memory, whereas setting it to a file will place it
-/// in the path of the given file.
-#[deprecated(since="0.10.0", note="Pass Vec<u8>, File, or any `T: Read + Write + Seek` directly")]
-#[derive(Debug)]
-pub enum Secret {
-    InMemory(Cursor<Vec<u8>>),
-    InFile(File)
-}
 
 trait SecretTrait {
     fn calculate_hash(&mut self) -> Result<Vec<u8>, Error>;
@@ -64,194 +48,7 @@ impl<T: Read + Seek> SecretTrait for T {
     }
 }
 
-#[allow(deprecated)]
-impl Read for Secret {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        match self {
-            Secret::InMemory(ref mut cursor) => {
-                cursor.read(buf)
-            }
-            Secret::InFile(ref mut file) => {
-                file.read(buf)
-            }
-        }
-    }
-}
-#[allow(deprecated)]
-impl Seek for Secret {
-    fn seek(&mut self, pos: std::io::SeekFrom) -> Result<u64, std::io::Error> {
-        match self {
-            Secret::InMemory(ref mut cursor) => {
-                cursor.seek(pos)
-            }
-            Secret::InFile(ref mut file) => {
-                file.seek(pos)
-            }
-        }
-    }
-}
 
-#[allow(deprecated)]
-impl Write for Secret {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-        match self {
-            Secret::InMemory(ref mut cursor) => {
-                cursor.write(buf)
-            }
-            Secret::InFile(ref mut file) => {
-                file.write(buf)
-            }
-        }
-    }
-    fn flush(&mut self) -> Result<(), std::io::Error> {
-        match self {
-            Secret::InMemory(ref mut cursor) => {
-                cursor.flush()
-            }
-            Secret::InFile(ref mut file) => {
-                file.flush()
-            }
-        }
-    }
-}
-
-#[allow(deprecated)]
-#[deprecated(since="0.10.0", note="Pass Vec<u8>, File, or any `T: Read + Write + Seek` directly")]
-impl Secret {
-    /// Constructs an empty vec for the secret.
-    pub fn empty_in_memory() -> Self {
-        Secret::InMemory(Cursor::new(Vec::new()))
-    }
-
-    /// Constructs an empty vec for the secret but allocates an intial capacity.
-    pub fn empty_in_memory_with_capacity(capacity: usize) -> Self {
-        Secret::InMemory(Cursor::new(Vec::with_capacity(capacity)))
-    }
-
-    /// (u8, u8)s the secret to a file. This file can either be a source for the secret, or an output
-    /// file for reconstructing a secret
-    pub fn point_at_file<T: Into<PathBuf>>(path: T) -> Result<Self, std::io::Error> {
-        Ok(Secret::InFile(std::fs::File::open(path.into())?))
-
-    }
-
-    /// Attempts to get the length of the Secret.
-    ///
-    /// This can fail if the secret is a file path that doesn't exist.
-    pub fn len(&self) -> Result<u64, Error> {
-        match self {
-            Secret::InFile(ref file) => Ok(file.metadata()
-                .map_err(|e| Error::secret_file_error(self, e))?
-                .len()),
-            Secret::InMemory(vec) => Ok(vec.get_ref().len() as u64),
-        }
-    }
-
-    pub fn is_empty(&self) -> Result<bool, Error> {
-        Ok(self.len()? == 0)
-    }
-
-    /// Calculates and returns the Sha3-512 hash of the first 64 bytes of the secret.
-    ///
-    /// This is mainly used for verifying secret reconstruction, where the chances of incorrect
-    /// reconstruction resulting in the first 64 bytes being correct is extremely low.
-    ///
-    /// If $secret.len() is less than 64 bytes, then only $secret.len() number of bytes is used.
-
-    /// Calculcates and returns the hash of the first 64 bytes of the share in a string with
-    /// hexidecimal digits.
-    pub fn get_hash_hex(&mut self) -> Result<String, Error> {
-        Ok(hex::encode(self.calculate_hash()?))
-    }
-
-    /// Calculates a hash and compares it to the given hash.
-    /// Returns Ok(true) if they're
-    /// equivalent, Ok(false) if they aren't or an error if there was an issue calculating the hash
-    /// (likely a read error if Secret was a file)
-    pub fn verify(&mut self, hash: &[u8]) -> Result<bool, Error> {
-        Ok(self.calculate_hash()? == hash.to_vec())
-    }
-
-    /// Unwrap and return the inner vec, consuming the secret.
-    ///
-    /// This will panic if the underlying secret is InFile.
-    pub fn unwrap_vec(mut self) -> Vec<u8> {
-        self.try_unwrap_vec().unwrap()
-    }
-
-    /// Unwrap and clone the inner vec.
-    ///
-    /// This will panic if the underlying secret is InFile
-    pub fn unwrap_vec_clone(&self) -> Vec<u8> {
-        self.try_unwrap_vec_clone().unwrap()
-    }
-
-    /// Try to unwrap and return the inner vec.
-    ///
-    /// This does not consume self, since it may return None.
-    ///
-    /// If the secret is returned, an empty vec is put in its place.
-    ///
-    /// Returns None if the inner value is a path, else returns the secret.
-    pub fn try_unwrap_vec(&mut self) -> Option<Vec<u8>> {
-        match self {
-            Secret::InMemory(ref mut secret) => Some(std::mem::take(secret).into_inner()),
-            _ => None,
-        }
-    }
-
-    /// Try to unwrap and clone the inner vec.
-    ///
-    /// This does not consume self since it may return None.
-    ///
-    /// Returns None if the inner value is a path, else returns the secret.
-    pub fn try_unwrap_vec_clone(&self) -> Option<Vec<u8>> {
-        match self {
-            Secret::InMemory(ref secret) => Some(secret.clone().into_inner()),
-            _ => None,
-        }
-    }
-
-    /// Unwrap if InMemory, or read into a Vec if it is InFile.
-    ///
-    /// This will return an Error if the file length is too large to fit into a Vec,
-    /// or if the file path is invalid.
-    pub fn unwrap_to_vec(self) -> Result<Vec<u8>, Error> {
-        match self {
-            Secret::InMemory(secret) => Ok(secret.into_inner()),
-            Secret::InFile(mut file) => {
-                file.rewind()?;
-                let len = file.metadata()?.len();
-                if len >= usize::MAX as u64 {
-                    return Err(Error::SecretTooLarge(len));
-                }
-                let mut buf = Vec::with_capacity(len as usize);
-                file.read_to_end(&mut buf)?;
-                Ok(buf)
-            }
-        }
-    }
-
-    /// Unwrap and clone if InMemory, or read into a Vec if it is InFile.
-    ///
-    /// This will return an Error if the file length is too large to fit into a Vec,
-    /// or if the file path is invalid.
-    pub fn unwrap_to_vec_clone(&mut self) -> Result<Vec<u8>, Error> {
-        match self {
-            Secret::InMemory(ref secret) => Ok(secret.clone().into_inner()),
-            Secret::InFile(ref mut file) => {
-                file.rewind()?;
-                let len = file.metadata()?.len();
-                if len >= usize::MAX as u64 {
-                    return Err(Error::SecretTooLarge(len));
-                }
-                let mut buf = Vec::with_capacity(len as usize);
-                file.read_to_end(&mut buf)?;
-                Ok(buf)
-            }
-        }
-    }
-}
 
 /// Iterator that iterates over a given Secret, returning smaller segments of it at a time.
 ///
@@ -264,25 +61,6 @@ impl Secret {
 pub struct SecretIterator<'a>{
     reader: Box<dyn Read + 'a>, // reader is a reader of the vec in secret, or it's to an open file
 }
-
-#[allow(deprecated)]
-impl<'a> std::iter::IntoIterator for &'a mut Secret {
-    type Item = Result<Vec<u8>, Error>;
-    type IntoIter = SecretIterator<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            Secret::InFile(ref mut file) => SecretIterator {
-                // Figure out better way to handle this
-                reader: Box::new(file) as Box<dyn Read>,
-            },
-            Secret::InMemory(ref boxed_slice) => SecretIterator {
-                reader: Box::new(boxed_slice.clone()) as Box<dyn Read>,
-            },
-        }
-    }
-}
-
 impl<'a> std::iter::Iterator for SecretIterator<'a> {
     type Item = Result<Vec<u8>, Error>;
 
@@ -722,12 +500,6 @@ Calculated Hash: {}",
 
 impl std::error::Error for Error {}
 
-#[allow(deprecated)]
-impl Error {
-    fn secret_file_error(_secret: &Secret, e: std::io::Error) -> Self {
-        e.into()
-    }
-}
 
 impl From<std::io::Error> for Error {
     fn from(source: std::io::Error) -> Self {
@@ -766,7 +538,7 @@ mod tests {
         let num_shares = 2;
         let secret: Vec<u8> = vec![13, 240, 189];
         share_to_files(
-            Secret::InMemory(Cursor::new(secret.clone())),
+            Cursor::new(secret.clone()),
             dir,
             stem,
             num_shares,
@@ -775,7 +547,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut recon = Secret::empty_in_memory();
+        let mut recon = Cursor::new(Vec::new());
 
         reconstruct_from_files(&mut recon, dir, stem, num_shares, true)
             .map_err(|_| ())
@@ -791,7 +563,7 @@ mod tests {
             }
         }
 
-        assert_eq!(secret, recon.unwrap_vec());
+        assert_eq!(secret, recon.into_inner());
     }
 
     #[test]
@@ -799,16 +571,16 @@ mod tests {
         let num_shares = 3;
         let secret: Vec<u8> = vec![0];
         let shares = share_from_buf(
-            Secret::InMemory(Cursor::new(secret.clone())),
+            Cursor::new(secret.clone()),
             num_shares,
             num_shares,
             true,
         )
         .unwrap();
-        let mut recon = Secret::empty_in_memory();
+        let mut recon = Cursor::new(Vec::new());
         reconstruct_to_buf(&mut recon, &shares, true).unwrap();
 
-        assert_eq!(secret, recon.unwrap_vec());
+        assert_eq!(secret, recon.into_inner());
     }
 
     #[test]
@@ -817,17 +589,17 @@ mod tests {
         let num_shares = 6;
         let num_shares_required = 3;
         let mut shares = share_from_buf(
-            Secret::InMemory(Cursor::new(secret.clone())),
+            Cursor::new(&secret),
             num_shares_required,
             num_shares,
             true,
         )
         .unwrap();
         shares.as_mut_slice().shuffle(&mut thread_rng());
-        let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
+        let mut recon_secret = Cursor::new(Vec::new());
         reconstruct_to_buf(&mut recon_secret, &shares[0..3], true).unwrap();
 
-        assert_eq!(secret, recon_secret.unwrap_vec());
+        assert_eq!(secret, recon_secret.into_inner());
     }
 
     #[test]
