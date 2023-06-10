@@ -1,4 +1,4 @@
-use crate::basic_sharing::{from_secrets, reconstruct_secrets};
+use crate::basic_sharing::{from_secrets, reconstruct_secrets, from_secrets_no_points, reconstruct_secrets_no_points};
 use sha3::{Digest, Sha3_512};
 use std::convert::TryFrom;
 use std::fs::File;
@@ -17,19 +17,82 @@ pub struct Sharer<'a> {
     bytes_shared: u64,
     hasher: Option<Sha3_512>,
     hash_op: fn(&mut Option<Sha3_512>, &[u8]),
+    shares_required: u8,
 }
 
 pub struct SharerBuilder<'a> {
-    hasher: Option<Sha3_512>,
     share_outputs: Vec<Box<dyn Write + 'a>>,
+    shares_required: u8,
+    verify: bool,
 
+}
+
+impl<'a> Sharer<'a> {
+    pub fn new(mut share_outputs: Vec<Box<dyn Write + 'a>>, shares_required: u8, verify: bool) -> Result<Self, Error> {
+        let hash_op = if verify {
+            add_to_hash
+        }
+        else {
+           noop_hash 
+        };
+
+        // Write out the coefficient for each share
+        for idx in 0..share_outputs.len() {
+            share_outputs[idx].write(&[(idx + 1) as u8])?;
+        }
+        Ok(Self {
+            share_outputs,
+            shares_required,
+            hash_op,
+            hasher: verify.then_some(Sha3_512::new()),
+            bytes_shared: 0,
+        })
+    }
+
+    pub fn builder() -> SharerBuilder<'a> {
+        SharerBuilder::new() 
+    }
+
+    pub fn get_shares_to_create(&self) -> u8 {
+        self.share_outputs.len() as u8
+    }
+
+    pub fn get_shares_required(&self) -> u8 {
+        self.shares_required as u8
+    }
+
+    pub fn update<T: AsRef<[u8]>>(&mut self, data: T) -> Result<usize, Error> {
+        let bytes = data.as_ref();
+        let bytes_shared = bytes.len();
+        (self.hash_op)(&mut self.hasher, bytes);
+
+        for (share_list, output) in from_secrets_no_points(
+            data.as_ref(),
+            self.shares_required,
+            self.get_shares_to_create(),
+            None,
+        )?.into_iter().zip(self.share_outputs.iter_mut()) {
+            output.write_all(&share_list[1..])?;
+        }
+        self.bytes_shared += bytes_shared as u64;
+        Ok(bytes_shared as usize)
+    }
+
+    pub fn finalize(mut self) -> Result<u64, Error> {
+        if let Some(hash) = self.hasher.as_mut().map(|hasher| hasher.finalize_reset()) {
+            // We want to write out the hash as well.
+            self.update(&hash)?;
+        }
+        Ok(self.bytes_shared)
+    }
 }
 
 impl<'a> SharerBuilder<'a> {
     pub fn new() -> Self {
         Self {
-            hasher: None,
             share_outputs: Vec::with_capacity(2),
+            shares_required: 2,
+            verify: false,
         }
     }
 
@@ -38,32 +101,18 @@ impl<'a> SharerBuilder<'a> {
         self
     }
 
-    pub fn verify(mut self, verify: bool) -> Self {
-        self.hasher = verify.then_some(Sha3_512::new());
+    pub fn with_verify(mut self, verify: bool) -> Self {
+        self.verify = verify;
         self
     }
 
-    pub fn build(self) -> Sharer<'a> {
-        let hash_op = if self.hasher.is_some() {
-            add_to_hash
-        }
-        else {
-            noop_hash
-
-        };
-        Sharer {
-            share_outputs: self.share_outputs,
-            bytes_shared: 0,
-            hasher: self.hasher,
-            hash_op,
-
-        }
+    pub fn with_shares_required(mut self, shares_required: u8) -> Self {
+        self.shares_required = shares_required;
+        self
     }
-}
 
-impl<'a> Sharer<'a> {
-    pub fn builder() -> SharerBuilder<'a> {
-        SharerBuilder::new() 
+    pub fn build(self) -> Result<Sharer<'a>, Error> {
+        Sharer::new(self.share_outputs, self.shares_required, self.verify)
     }
 }
 
@@ -72,6 +121,107 @@ fn add_to_hash(hasher: &mut Option<Sha3_512>, bytes: &[u8]) {
 }
 
 fn noop_hash(_hasher: &mut Option<Sha3_512>, _bytes: &[u8]) {
+
+}
+
+
+pub struct Reconstructor<T: Write> {
+    secret_dest: T,
+    hasher: Option<Sha3_512>,
+    x_vals: Option<Vec<u8>>,
+    update_inner: fn(&mut Reconstructor<T>, &[&[u8]]) -> Result<(), Error>,
+    hash_op: fn(&mut Option<Sha3_512>, &[u8]),
+    last_64_bytes: Vec<u8>,
+}
+
+impl<T: Write> Reconstructor<T> {
+    pub fn new<U: AsRef<[u8]>>(secret_dest: T, verify: bool) -> Self {
+        let hash_op = if verify {
+            add_to_hash
+        }
+        else {
+            noop_hash
+        };
+        Self {
+            secret_dest,
+            hasher: verify.then_some(Sha3_512::new()),
+            x_vals: None,
+            update_inner: Reconstructor::first_update,
+            hash_op,
+            last_64_bytes: Vec::with_capacity(128),
+        }
+    }
+
+    pub fn update<U: AsRef<[u8]>>(&mut self, blocks: &[U]) -> Result<usize, Error> {
+        let lens: Vec<usize> = blocks.iter().map(|block| block.as_ref().len()).collect();
+
+        if lens.iter().any(|len| len != &lens[0]) {
+            return Err(Error::InconsistentSourceLength(lens));
+        }
+        (self.update_inner)(self, blocks.iter().map(|b| b.as_ref()).collect::<Vec<&[u8]>>().as_ref())?;
+
+        todo!()
+    }
+        
+    
+    fn first_update(&mut self, blocks: &[&[u8]]) -> Result<(), Error> {
+        // This includes the x-values
+        self.x_vals = Some(blocks.iter().map(|b| b[0]).collect());
+        self.update_inner = Reconstructor::non_first_update;
+        self.non_first_update(blocks.iter().map(|b| &b[1..]).collect::<Vec<&[u8]>>().as_ref())?;
+        Ok(())
+    }
+
+    fn non_first_update(&mut self, blocks: &[&[u8]]) -> Result<(), Error> {
+        let expanded_blocks = blocks
+            .iter()
+            .zip(
+                self.x_vals.as_ref().unwrap().iter())
+            .map(|(block, x_val)| std::iter::once(*x_val).chain(block.iter().copied()).collect::<Vec<u8>>()).collect::<Vec<Vec<u8>>>();
+
+        let recon_chunk = reconstruct_secrets_no_points(expanded_blocks);
+
+        // Split the recon_chunk into slices of [ X bytes ],[64 bytes]. The last 64 bytes
+        // are stored and written in the next call to update, or during finalize when 
+        // hasher is None.
+        // Tracking the last 64 bytes allows us to calculate the hash of the reconstructed
+        // secret without having to re-read it.
+        let curr_chunk = &recon_chunk[0..recon_chunk.len().saturating_sub(64)];
+        let last_64_bytes = &recon_chunk[recon_chunk.len().saturating_sub(64)..];
+
+        // Append the current last 64 with the new 64
+        self.last_64_bytes.extend(last_64_bytes);
+
+        // Drain so only the latest 64 elements remain, writing the ones drained off into the reconstructing secret
+        // first, since they were reconstructed before the current chunk.
+        let drained_recon_bytes = self.last_64_bytes.drain(0..self.last_64_bytes.len().saturating_sub(64)).collect::<Vec<u8>>();
+
+        self.secret_dest.write_all(&drained_recon_bytes)?; 
+        self.secret_dest.write_all(curr_chunk)?; 
+        
+        // Now hash, in the same order.
+        (self.hash_op)(&mut self.hasher, &drained_recon_bytes);
+        (self.hash_op)(&mut self.hasher, curr_chunk);
+
+
+        Ok(())
+    }
+
+    pub fn finalize(mut self) -> Result<(), Error> {
+        if let Some(hasher) = self.hasher.as_mut() {
+            // verify was enabled, so the last 64 bytes are assumed to be the hash.
+            let calculated_hash = hasher.finalize_reset();
+            if &calculated_hash.as_ref() != &self.last_64_bytes {
+                return Err(Error::VerificationFailure(hex::encode(&calculated_hash), hex::encode(&self.last_64_bytes))); 
+            }
+        }
+        else {
+            // verify was not enabled, so last 64 bytes still need to be written.
+            self.secret_dest.write_all(&self.last_64_bytes)?;
+        }
+
+        Ok(())
+    }
 
 }
 
@@ -498,6 +648,7 @@ pub enum Error {
     IOError(std::io::Error),
     OtherSharingError(crate::basic_sharing::Error),
     NotEnoughBytesInSrc(u64),
+    InconsistentSourceLength(Vec<usize>),
 }
 
 impl From<crate::basic_sharing::Error> for Error {
@@ -559,7 +710,13 @@ Calculated Hash: {}",
                    "The given length ({}) is not long enough for reconstruction, must be >65 if verify, else >2", 
                    bytes 
                 )
-
+            }
+            Error::InconsistentSourceLength(lens) => {
+                write!(
+                    f,
+                    "The given chunks have differing lengths: {:?}", 
+                    lens,
+                )
             }
         }
     }
