@@ -15,42 +15,17 @@ use rand::{Rng, RngCore, SeedableRng};
 /// The default is StdRng::from_entropy()
 ///
 /// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
+#[deprecated(since="0.11.0", note="Use from_secrets_no_points")]
 pub fn from_secret(
     secret: u8,
     shares_required: u8,
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<(u8, u8)>, Error> {
-    if shares_required > shares_to_create {
-        return Err(Error::UnreconstructableSecret(
-            shares_to_create,
-            shares_required,
-        ));
-    }
-    if shares_to_create < 2 {
-        return Err(Error::InvalidNumberOfShares(shares_to_create));
-    }
-
-    // Use the given rng or if none was given, use from entropy
-    let mut shares: Vec<(u8, u8)> = Vec::with_capacity(shares_to_create as usize);
-    let mut share_poly = GaloisPolynomial::new();
-    let mut rng: Box<dyn RngCore> = match rand {
-        Some(rng) => Box::new(rng), 
-        None => Box::new(StdRng::from_entropy()), 
-    };
-
-    share_poly.set_coeff(Coeff(secret), 0);
-    for i in 1..shares_required {
-        let curr_co = rng.gen_range(2..255);
-        share_poly.set_coeff(Coeff(curr_co), i as usize);
-    }
-
-    for i in 1..=shares_to_create {
-        let curr_x = i as u8;
-        let curr_y = share_poly.get_y_value(curr_x);
-        shares.push((curr_x, curr_y));
-    }
-    Ok(shares)
+    Ok(from_secrets_no_points(&[secret], shares_required, shares_to_create, rand)?
+        .into_iter()
+        .map(|v| (v[0], v[1]))
+        .collect())
 }
 
 /// Reconstructs a secret from a given Vector of shares (points) and returns that secret.
