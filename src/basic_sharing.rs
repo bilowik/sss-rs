@@ -1,4 +1,4 @@
-use crate::geometry::*;
+use crate::geometry::{GaloisPolynomial, Coeff};
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
 
@@ -15,7 +15,6 @@ use rand::{Rng, RngCore, SeedableRng};
 /// The default is StdRng::from_entropy()
 ///
 /// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
-#[deprecated(since="0.11.0", note="Use from_secrets_no_points")]
 pub fn from_secret(
     secret: u8,
     shares_required: u8,
