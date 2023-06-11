@@ -130,22 +130,15 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
             v
         })
         .collect::<Vec<Vec<u8>>>();
-
-    let polys = secret
-        .iter()
-        .map(|s| {
-            let mut share_poly = GaloisPolynomial::new();
-            share_poly.set_coeff(Coeff(*s), 0);
-            for i in 1..shares_required {
-                let curr_co = rng.gen_range(2..255);
-                share_poly.set_coeff(Coeff(curr_co), i as usize);
-            }
-            share_poly
-        })
-        .collect::<Vec<GaloisPolynomial>>();
-    for x in 0..shares_to_create {
-        for poly in polys.iter() {
-            shares_list[x as usize].push(poly.get_y_value(x + 1));
+    for s in secret {
+        let mut share_poly = GaloisPolynomial::new();
+        share_poly.set_coeff(Coeff(*s), 0);
+        for i in 1..shares_required {
+            let curr_co = rng.gen_range(2..255);
+            share_poly.set_coeff(Coeff(curr_co), i as usize);
+        }
+        for x in 0..shares_to_create {
+            shares_list[x as usize].push(share_poly.get_y_value(x + 1))    
         }
     }
     Ok(shares_list)
