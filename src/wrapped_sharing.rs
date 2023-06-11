@@ -1,28 +1,345 @@
-use crate::basic_sharing::{from_secrets, reconstruct_secrets};
-use sha3::Digest;
+//! Abstractions and wrappers around the core implementation of sharing/reconstructing.
+//!
+//! For in-memory or small files, [share] and [reconstruct] are suitable. For large files or
+//! byte streams, [Sharer] and [Reconstructor] are better suited since they share/reconstruct in
+//! chunks.
+//!
+//! For implementing custom wrappers or abstractions, [basic_sharing][crate::basic_sharing]
+//! functions can be utilized if finer-tuned control is needed.
+use crate::basic_sharing::{
+    from_secrets, from_secrets_compressed, reconstruct_secrets, reconstruct_secrets_compressed,
+};
+use sha3::{Digest, Sha3_512};
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io::{Cursor, Read, Write, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use std::path::Path;
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
-pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
+const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
 
-/// Contains the secret, whether in file or in memory stored in a Vec of bytes.
+/// Used to share in chunks, useful for large files.
 ///
-/// This can be used for both sharing and reconstructing. When reconstructing,
-/// you can set it to reconstruct into
-/// a Vec by setting it to InMemory, or you can set it to output to a file.
-/// For sharing, you can input a secret to be shared, either a file or a vec of bytes.
+///```
+/// use sss_rs::wrapped_sharing::{Sharer, Reconstructor};
+/// use std::io::Cursor;
 ///
-/// For example, setting it to empty in memory, and then reconstructing it, will place
-/// the reconstructed value in memory, whereas setting it to a file will place it
-/// in the path of the given file.
-#[deprecated(since="0.10.0", note="Pass Vec<u8>, File, or any `T: Read + Write + Seek` directly")]
-#[derive(Debug)]
-pub enum Secret {
-    InMemory(Cursor<Vec<u8>>),
-    InFile(File)
+/// let mut dest1 = Cursor::new(Vec::new());
+/// let mut dest2 = Cursor::new(Vec::new());
+/// let full_secret = b"This is a very long secret read in from a buffered file reader";
+/// let secret_chunks = full_secret.chunks(8).collect::<Vec<&[u8]>>();
+///
+/// let mut sharer = Sharer::builder()
+///     .with_shares_required(2)
+///     .with_output(&mut dest1)
+///     .with_output(&mut dest2)
+///     .with_verify(true)
+///     .build()
+///     .unwrap();
+///
+/// for secret in secret_chunks.iter() {
+///     sharer.update(secret).unwrap();
+/// }
+/// sharer.finalize().unwrap();
+///```
+///
+pub struct Sharer<'a> {
+    share_outputs: Vec<Box<dyn Write + 'a>>,
+    bytes_shared: u64,
+    hasher: Option<Sha3_512>,
+    hash_op: fn(&mut Option<Sha3_512>, &[u8]),
+    shares_required: u8,
+}
+
+/// Builder pattern for [Sharer], use [Sharer::builder] to instantiate.
+pub struct SharerBuilder<'a> {
+    share_outputs: Vec<Box<dyn Write + 'a>>,
+    shares_required: u8,
+    verify: bool,
+}
+
+impl<'a> Sharer<'a> {
+    /// Creates a new instance of Sharer
+    ///
+    /// Susceptible to any underlying [std::io::Error] that can be produced by the underlying
+    /// writable outputs.
+    pub fn new(
+        mut share_outputs: Vec<Box<dyn Write + 'a>>,
+        shares_required: u8,
+        verify: bool,
+    ) -> Result<Self, Error> {
+        let hash_op = if verify { add_to_hash } else { noop_hash };
+
+        // Write out the coefficient for each share
+        for idx in 0..share_outputs.len() {
+            share_outputs[idx].write(&[(idx + 1) as u8])?;
+        }
+        Ok(Self {
+            share_outputs,
+            shares_required,
+            hash_op,
+            hasher: verify.then_some(Sha3_512::new()),
+            bytes_shared: 0,
+        })
+    }
+
+    pub fn builder() -> SharerBuilder<'a> {
+        SharerBuilder::new()
+    }
+
+    pub fn get_shares_to_create(&self) -> u8 {
+        self.share_outputs.len() as u8
+    }
+
+    pub fn get_shares_required(&self) -> u8 {
+        self.shares_required as u8
+    }
+
+    /// Split the given chunk of data into shares and write them out to the
+    /// set outputs.
+    ///
+    /// Susceptible to any underlying [std::io::Error] that can be produced by the underlying
+    /// writable outputs.
+    pub fn update<T: AsRef<[u8]>>(&mut self, data: T) -> Result<usize, Error> {
+        let bytes = data.as_ref();
+        let bytes_shared = bytes.len();
+        (self.hash_op)(&mut self.hasher, bytes);
+
+        for (share_list, output) in from_secrets_compressed(
+            data.as_ref(),
+            self.shares_required,
+            self.get_shares_to_create(),
+            None,
+        )?
+        .into_iter()
+        .zip(self.share_outputs.iter_mut())
+        {
+            output.write_all(&share_list[1..])?;
+        }
+        self.bytes_shared += bytes_shared as u64;
+        Ok(bytes_shared as usize)
+    }
+
+    /// Finalizes the sharing, and returns the number of bytes shared.
+    ///
+    /// If verify was set to true, the underlying hasher will produce a hash that is then also
+    /// split into shares and written out to the set outputs.
+    pub fn finalize(mut self) -> Result<u64, Error> {
+        if let Some(hash) = self.hasher.as_mut().map(|hasher| hasher.finalize_reset()) {
+            // We want to write out the hash as well.
+            self.update(&hash)?;
+        }
+        Ok(self.bytes_shared)
+    }
+}
+
+impl<'a> SharerBuilder<'a> {
+    pub fn new() -> Self {
+        Self {
+            share_outputs: Vec::with_capacity(2),
+            shares_required: 2,
+            verify: false,
+        }
+    }
+
+    /// Adds an output to the list of outputs to split the secret into
+    pub fn with_output<T: Write + 'a>(mut self, output: T) -> Self {
+        self.share_outputs
+            .push(Box::new(output) as Box<dyn Write + 'a>);
+        self
+    }
+
+    /// Will calculate a hash of the secret and append it at the end, sharing it
+    /// along with the secret, allowing for verification of valid reconstruction.
+    pub fn with_verify(mut self, verify: bool) -> Self {
+        self.verify = verify;
+        self
+    }
+
+    /// Sets the number of shares required for reconstruction.
+    ///
+    /// This must not be < 2 or > the number of provided outputs. Default is 2 if unset.
+    pub fn with_shares_required(mut self, shares_required: u8) -> Self {
+        self.shares_required = shares_required;
+        self
+    }
+
+    /// Instantiates the Sharer
+    pub fn build(self) -> Result<Sharer<'a>, Error> {
+        Sharer::new(self.share_outputs, self.shares_required, self.verify)
+    }
+}
+
+fn add_to_hash(hasher: &mut Option<Sha3_512>, bytes: &[u8]) {
+    hasher.as_mut().unwrap().update(bytes);
+}
+
+fn noop_hash(_hasher: &mut Option<Sha3_512>, _bytes: &[u8]) {}
+
+/// Used to reconstruct a secret in chunks, useful for large files.
+///
+/// ```rust
+/// use sss_rs::wrapped_sharing::{Sharer, Reconstructor};
+/// use std::io::Cursor;
+///
+/// let mut dest1 = Cursor::new(Vec::new());
+/// let mut dest2 = Cursor::new(Vec::new());
+/// let full_secret = b"This is a very long secret read in from a buffered file reader";
+///
+/// # let secret_chunks = full_secret.chunks(8).collect::<Vec<&[u8]>>();
+/// # let mut recon_dest = Cursor::new(Vec::new());
+/// #
+/// # let mut sharer = Sharer::builder()
+/// #     .with_shares_required(2)
+/// #     .with_output(&mut dest1)
+/// #     .with_output(&mut dest2)
+/// #     .with_verify(true)
+/// #     .build()
+/// #     .unwrap();
+/// #
+/// # for secret in secret_chunks.iter() {
+/// #     sharer.update(secret).unwrap();
+/// # }
+/// # sharer.finalize().unwrap();
+/// // *The secret is shared into dest1 and dest2...*
+///
+/// let mut reconstructor = Reconstructor::new(&mut recon_dest, true);
+///
+/// for (chunk1, chunk2) in dest1.get_ref().chunks(4).zip(dest2.get_ref().chunks(4)) {
+///     reconstructor.update(&[chunk1, chunk2]).unwrap();
+/// }
+/// reconstructor.finalize().unwrap();
+/// assert_eq!(&full_secret, &recon_dest.into_inner().as_slice());
+/// ```
+pub struct Reconstructor<T: Write> {
+    secret_dest: T,
+    hasher: Option<Sha3_512>,
+    x_vals: Option<Vec<u8>>,
+    update_inner: fn(&mut Reconstructor<T>, &[&[u8]]) -> Result<(), Error>,
+    hash_op: fn(&mut Option<Sha3_512>, &[u8]),
+    last_64_bytes: Vec<u8>,
+    bytes_reconstructed: u64,
+}
+
+impl<T: Write> Reconstructor<T> {
+    /// Creates a new instance of Reconstructor
+    pub fn new(secret_dest: T, verify: bool) -> Self {
+        let hash_op = if verify { add_to_hash } else { noop_hash };
+        Self {
+            secret_dest,
+            hasher: verify.then_some(Sha3_512::new()),
+            x_vals: None,
+            update_inner: Reconstructor::first_update,
+            hash_op,
+            last_64_bytes: Vec::with_capacity(128),
+            bytes_reconstructed: 0,
+        }
+    }
+
+    /// Takes the given list of chunks and reconstructs a chunk of the secret, writing it to
+    /// the set output.
+    ///
+    /// An error will be returned if all the blocks in blocks don't have identical lengths.
+    ///
+    /// Also susceptible to any underlying [std::io::Error] that can be produced by the underlying
+    /// writable output.
+    pub fn update<V: AsRef<[U]>, U: AsRef<[u8]>>(&mut self, blocks: V) -> Result<usize, Error> {
+        let blocks = blocks.as_ref();
+        let lens: Vec<usize> = blocks.iter().map(|block| block.as_ref().len()).collect();
+
+        if lens.iter().any(|len| len != &lens[0]) {
+            return Err(Error::InconsistentSourceLength(lens));
+        }
+        (self.update_inner)(
+            self,
+            blocks
+                .iter()
+                .map(|b| b.as_ref())
+                .collect::<Vec<&[u8]>>()
+                .as_ref(),
+        )?;
+        self.bytes_reconstructed += lens[0] as u64;
+        Ok(lens[0])
+    }
+
+    fn first_update(&mut self, blocks: &[&[u8]]) -> Result<(), Error> {
+        // This includes the x-values
+        self.x_vals = Some(blocks.iter().map(|b| b[0]).collect());
+        self.update_inner = Reconstructor::non_first_update;
+        self.non_first_update(
+            blocks
+                .iter()
+                .map(|b| &b[1..])
+                .collect::<Vec<&[u8]>>()
+                .as_ref(),
+        )?;
+        Ok(())
+    }
+
+    fn non_first_update(&mut self, blocks: &[&[u8]]) -> Result<(), Error> {
+        let expanded_blocks = blocks
+            .iter()
+            .zip(self.x_vals.as_ref().unwrap().iter())
+            .map(|(block, x_val)| {
+                std::iter::once(*x_val)
+                    .chain(block.iter().copied())
+                    .collect::<Vec<u8>>()
+            })
+            .collect::<Vec<Vec<u8>>>();
+
+        let recon_chunk = reconstruct_secrets_compressed(expanded_blocks);
+
+        // Split the recon_chunk into slices of [ X bytes ],[64 bytes]. The last 64 bytes
+        // are stored and written in the next call to update, or during finalize when
+        // hasher is None.
+        // Tracking the last 64 bytes allows us to calculate the hash of the reconstructed
+        // secret without having to re-read it.
+        let curr_chunk = &recon_chunk[0..recon_chunk.len().saturating_sub(64)];
+        let last_64_bytes = &recon_chunk[recon_chunk.len().saturating_sub(64)..];
+
+        // Append the current last 64 with the new 64
+        self.last_64_bytes.extend(last_64_bytes);
+
+        // Drain so only the latest 64 elements remain, writing the ones drained off into the reconstructing secret
+        // first, since they were reconstructed before the current chunk.
+        let drained_recon_bytes = self
+            .last_64_bytes
+            .drain(0..self.last_64_bytes.len().saturating_sub(64))
+            .collect::<Vec<u8>>();
+
+        self.secret_dest.write_all(&drained_recon_bytes)?;
+        self.secret_dest.write_all(curr_chunk)?;
+
+        // Now hash, in the same order.
+        (self.hash_op)(&mut self.hasher, &drained_recon_bytes);
+        (self.hash_op)(&mut self.hasher, curr_chunk);
+
+        Ok(())
+    }
+    /// Writes out any remaining bytes or calculates and compares hashes if verify was set.
+    ///
+    /// Returns the total number of bytes reconstructed. Note this is not the total number of bytes
+    /// fed into the Reconstructor.
+    ///
+    /// Susceptible to any underlying [std::io::Error] that can be produced by the underlying
+    /// writable output.
+    pub fn finalize(mut self) -> Result<u64, Error> {
+        if let Some(hasher) = self.hasher.as_mut() {
+            // verify was enabled, so the last 64 bytes are assumed to be the hash.
+            let calculated_hash = hasher.finalize_reset();
+            if calculated_hash.as_slice() != &self.last_64_bytes {
+                return Err(Error::VerificationFailure(
+                    hex::encode(&calculated_hash),
+                    hex::encode(&self.last_64_bytes),
+                ));
+            }
+        } else {
+            // verify was not enabled, so last 64 bytes still need to be written.
+            self.secret_dest.write_all(&self.last_64_bytes)?;
+        }
+
+        Ok(self.bytes_reconstructed)
+    }
 }
 
 trait SecretTrait {
@@ -32,7 +349,6 @@ trait SecretTrait {
 
     fn verify(&mut self, hash: &[u8]) -> Result<bool, Error>;
 }
-
 
 impl<T: Read + Seek> SecretTrait for T {
     fn calculate_hash(&mut self) -> Result<Vec<u8>, Error> {
@@ -52,7 +368,6 @@ impl<T: Read + Seek> SecretTrait for T {
         Ok(hasher_output.to_vec())
     }
 
-
     fn len(&mut self) -> Result<u64, Error> {
         self.rewind()?;
         let len = self.seek(SeekFrom::End(0))?;
@@ -64,195 +379,6 @@ impl<T: Read + Seek> SecretTrait for T {
     }
 }
 
-#[allow(deprecated)]
-impl Read for Secret {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
-        match self {
-            Secret::InMemory(ref mut cursor) => {
-                cursor.read(buf)
-            }
-            Secret::InFile(ref mut file) => {
-                file.read(buf)
-            }
-        }
-    }
-}
-#[allow(deprecated)]
-impl Seek for Secret {
-    fn seek(&mut self, pos: std::io::SeekFrom) -> Result<u64, std::io::Error> {
-        match self {
-            Secret::InMemory(ref mut cursor) => {
-                cursor.seek(pos)
-            }
-            Secret::InFile(ref mut file) => {
-                file.seek(pos)
-            }
-        }
-    }
-}
-
-#[allow(deprecated)]
-impl Write for Secret {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
-        match self {
-            Secret::InMemory(ref mut cursor) => {
-                cursor.write(buf)
-            }
-            Secret::InFile(ref mut file) => {
-                file.write(buf)
-            }
-        }
-    }
-    fn flush(&mut self) -> Result<(), std::io::Error> {
-        match self {
-            Secret::InMemory(ref mut cursor) => {
-                cursor.flush()
-            }
-            Secret::InFile(ref mut file) => {
-                file.flush()
-            }
-        }
-    }
-}
-
-#[allow(deprecated)]
-#[deprecated(since="0.10.0", note="Pass Vec<u8>, File, or any `T: Read + Write + Seek` directly")]
-impl Secret {
-    /// Constructs an empty vec for the secret.
-    pub fn empty_in_memory() -> Self {
-        Secret::InMemory(Cursor::new(Vec::new()))
-    }
-
-    /// Constructs an empty vec for the secret but allocates an intial capacity.
-    pub fn empty_in_memory_with_capacity(capacity: usize) -> Self {
-        Secret::InMemory(Cursor::new(Vec::with_capacity(capacity)))
-    }
-
-    /// (u8, u8)s the secret to a file. This file can either be a source for the secret, or an output
-    /// file for reconstructing a secret
-    pub fn point_at_file<T: Into<PathBuf>>(path: T) -> Result<Self, std::io::Error> {
-        Ok(Secret::InFile(std::fs::File::open(path.into())?))
-
-    }
-
-    /// Attempts to get the length of the Secret.
-    ///
-    /// This can fail if the secret is a file path that doesn't exist.
-    pub fn len(&self) -> Result<u64, Error> {
-        match self {
-            Secret::InFile(ref file) => Ok(file.metadata()
-                .map_err(|e| Error::secret_file_error(self, e))?
-                .len()),
-            Secret::InMemory(vec) => Ok(vec.get_ref().len() as u64),
-        }
-    }
-
-    pub fn is_empty(&self) -> Result<bool, Error> {
-        Ok(self.len()? == 0)
-    }
-
-    /// Calculates and returns the Sha3-512 hash of the first 64 bytes of the secret.
-    ///
-    /// This is mainly used for verifying secret reconstruction, where the chances of incorrect
-    /// reconstruction resulting in the first 64 bytes being correct is extremely low.
-    ///
-    /// If $secret.len() is less than 64 bytes, then only $secret.len() number of bytes is used.
-
-    /// Calculcates and returns the hash of the first 64 bytes of the share in a string with
-    /// hexidecimal digits.
-    pub fn get_hash_hex(&mut self) -> Result<String, Error> {
-        Ok(hex::encode(self.calculate_hash()?))
-    }
-
-    /// Calculates a hash and compares it to the given hash.
-    /// Returns Ok(true) if they're
-    /// equivalent, Ok(false) if they aren't or an error if there was an issue calculating the hash
-    /// (likely a read error if Secret was a file)
-    pub fn verify(&mut self, hash: &[u8]) -> Result<bool, Error> {
-        Ok(self.calculate_hash()? == hash.to_vec())
-    }
-
-    /// Unwrap and return the inner vec, consuming the secret.
-    ///
-    /// This will panic if the underlying secret is InFile.
-    pub fn unwrap_vec(mut self) -> Vec<u8> {
-        self.try_unwrap_vec().unwrap()
-    }
-
-    /// Unwrap and clone the inner vec.
-    ///
-    /// This will panic if the underlying secret is InFile
-    pub fn unwrap_vec_clone(&self) -> Vec<u8> {
-        self.try_unwrap_vec_clone().unwrap()
-    }
-
-    /// Try to unwrap and return the inner vec.
-    ///
-    /// This does not consume self, since it may return None.
-    ///
-    /// If the secret is returned, an empty vec is put in its place.
-    ///
-    /// Returns None if the inner value is a path, else returns the secret.
-    pub fn try_unwrap_vec(&mut self) -> Option<Vec<u8>> {
-        match self {
-            Secret::InMemory(ref mut secret) => Some(std::mem::take(secret).into_inner()),
-            _ => None,
-        }
-    }
-
-    /// Try to unwrap and clone the inner vec.
-    ///
-    /// This does not consume self since it may return None.
-    ///
-    /// Returns None if the inner value is a path, else returns the secret.
-    pub fn try_unwrap_vec_clone(&self) -> Option<Vec<u8>> {
-        match self {
-            Secret::InMemory(ref secret) => Some(secret.clone().into_inner()),
-            _ => None,
-        }
-    }
-
-    /// Unwrap if InMemory, or read into a Vec if it is InFile.
-    ///
-    /// This will return an Error if the file length is too large to fit into a Vec,
-    /// or if the file path is invalid.
-    pub fn unwrap_to_vec(self) -> Result<Vec<u8>, Error> {
-        match self {
-            Secret::InMemory(secret) => Ok(secret.into_inner()),
-            Secret::InFile(mut file) => {
-                file.rewind()?;
-                let len = file.metadata()?.len();
-                if len >= usize::MAX as u64 {
-                    return Err(Error::SecretTooLarge(len));
-                }
-                let mut buf = Vec::with_capacity(len as usize);
-                file.read_to_end(&mut buf)?;
-                Ok(buf)
-            }
-        }
-    }
-
-    /// Unwrap and clone if InMemory, or read into a Vec if it is InFile.
-    ///
-    /// This will return an Error if the file length is too large to fit into a Vec,
-    /// or if the file path is invalid.
-    pub fn unwrap_to_vec_clone(&mut self) -> Result<Vec<u8>, Error> {
-        match self {
-            Secret::InMemory(ref secret) => Ok(secret.clone().into_inner()),
-            Secret::InFile(ref mut file) => {
-                file.rewind()?;
-                let len = file.metadata()?.len();
-                if len >= usize::MAX as u64 {
-                    return Err(Error::SecretTooLarge(len));
-                }
-                let mut buf = Vec::with_capacity(len as usize);
-                file.read_to_end(&mut buf)?;
-                Ok(buf)
-            }
-        }
-    }
-}
-
 /// Iterator that iterates over a given Secret, returning smaller segments of it at a time.
 ///
 /// Returns Option<Result<Vec<u8>, Error>> because file reads may fail, and in that case
@@ -261,28 +387,9 @@ impl Secret {
 /// Iteration can continue, but the behavior is undefined as it may be
 /// able to continue reading or may not depending on the initial error. See std::io::Error for
 /// possible errors.
-pub struct SecretIterator<'a>{
+struct SecretIterator<'a> {
     reader: Box<dyn Read + 'a>, // reader is a reader of the vec in secret, or it's to an open file
 }
-
-#[allow(deprecated)]
-impl<'a> std::iter::IntoIterator for &'a mut Secret {
-    type Item = Result<Vec<u8>, Error>;
-    type IntoIter = SecretIterator<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            Secret::InFile(ref mut file) => SecretIterator {
-                // Figure out better way to handle this
-                reader: Box::new(file) as Box<dyn Read>,
-            },
-            Secret::InMemory(ref boxed_slice) => SecretIterator {
-                reader: Box::new(boxed_slice.clone()) as Box<dyn Read>,
-            },
-        }
-    }
-}
-
 impl<'a> std::iter::Iterator for SecretIterator<'a> {
     type Item = Result<Vec<u8>, Error>;
 
@@ -354,7 +461,9 @@ pub fn share_to_writables<'a, T: Read + Seek>(
         // Return error if seret_segment is an error, or unwrap it if its ok. This can happen
         // if the secret is a file and a reading error occured during iteration
         let mut secret_segment = Vec::with_capacity(READ_SEGMENT_SIZE);
-        (&mut secret).take(READ_SEGMENT_SIZE as u64).read_to_end(&mut secret_segment)?;
+        (&mut secret)
+            .take(READ_SEGMENT_SIZE as u64)
+            .read_to_end(&mut secret_segment)?;
 
         if !secret_segment.is_empty() {
             let share_lists = from_secrets(
@@ -364,11 +473,9 @@ pub fn share_to_writables<'a, T: Read + Seek>(
                 None,
             )?;
             share_lists_to_dests(share_lists, dests)?;
-        }
-        else {
+        } else {
             finished = true;
         }
-
     }
 
     if verify {
@@ -388,22 +495,50 @@ pub fn share_to_writables<'a, T: Read + Seek>(
     Ok(())
 }
 
-
-pub fn share(
-    secret: &[u8],
+/// See [from_secrets_compressed][crate::basic_sharing::from_secrets_compressed] for more
+/// information.
+///
+/// Wraps around [from_secrets_compressed][crate::basic_sharing::from_secrets_compressed with the
+/// option to use hash verification.
+pub fn share<T: AsRef<[u8]>>(
+    secret: T,
     shares_required: u8,
     shares_to_create: u8,
     verify: bool,
 ) -> Result<Vec<Vec<u8>>, Error> {
-    share_from_buf(Cursor::new(secret), shares_required, shares_to_create, verify)
+    // Need to define this out here so it is available outside the below if statement.
+    // We want to avoid doing an extra allocation when verify is false and we also
+    // want to avoid duplicating any code.
+    let mut secret_and_hash;
+    let secret = secret.as_ref();
+    let full_secret = if verify {
+        secret_and_hash = Vec::with_capacity(secret.len() + 64);
+        secret_and_hash.extend(secret);
+        let mut hasher = Sha3_512::new();
+        hasher.update(secret);
+        let hash = hasher.finalize();
+        secret_and_hash.extend(hash);
+        &secret_and_hash
+    } else {
+        secret
+    };
+    Ok(from_secrets_compressed(
+        full_secret,
+        shares_required,
+        shares_to_create,
+        None,
+    )?)
 }
 
-// TODO: Optimize me, there is a full copy that's done on all the shares, there must be a way to
-// avoid this.
 /// Creates the shares and places them into a Vec of Vecs. This wraps around
 /// [share_to_writables].
 ///
 /// secret will have rewind() called on it
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Sharer] and [share] which covers this use case far
+/// more gracefully and efficiently.
+#[deprecated(since = "0.11.0", note = "Use share() or Sharer instead")]
 pub fn share_from_buf<T: Read + Seek>(
     mut secret: T,
     shares_required: u8,
@@ -449,6 +584,11 @@ pub fn share_from_buf<T: Read + Seek>(
 /// **dir:** The directory to output the shares to.
 ///
 /// If **dir** isn't valid, the LAST invalid destination file's error is returned.
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Sharer] and [share] which covers this use case far
+/// more gracefully and efficiently.
+#[deprecated(since = "0.11.0", note = "Use share() or Sharer instead")]
 pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
     secret: U,
     dir: T,
@@ -482,7 +622,17 @@ pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
 /// **verify**: If true, a hash is assumed to exist at the end of the secret and will be used
 ///             to verify secret reconstruction. NOTE: This will fail if the secret was not
 ///             shared with verify set to true.
-pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: T, srcs: &[Vec<u8>], verify: bool) -> Result<(), Error> {
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
+/// more gracefully and efficiently.
+#[allow(deprecated)]
+#[deprecated(since = "0.11.0", note = "Use reconstruct() or Reconstructor instead")]
+pub fn reconstruct_to_buf<T: Read + Write + Seek>(
+    secret: T,
+    srcs: &[Vec<u8>],
+    verify: bool,
+) -> Result<(), Error> {
     let src_len = srcs[0].len() as u64;
     let mut srcs = srcs
         .into_iter()
@@ -491,26 +641,55 @@ pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: T, srcs: &[Vec<u8>], v
     reconstruct_from_srcs(secret, &mut srcs, src_len, verify)
 }
 
-
 /// Reconstructs a secret to a vec
-pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
-    let len = srcs.get(0).ok_or(Error::InvalidNumberOfShares(0))?.len();
-    let mut buf = Cursor::new(Vec::with_capacity(len));
-    let src_len = srcs[0].len() as u64;
-    let mut srcs = srcs
-        .into_iter()
-        .map(|share| Box::new(Cursor::new(share)) as Box<dyn Read>)
-        .collect();
-    reconstruct_from_srcs(&mut buf, &mut srcs, src_len, verify)?;
-    Ok(buf.into_inner())
+pub fn reconstruct<U: AsRef<[u8]>, T: AsRef<[U]>>(srcs: T, verify: bool) -> Result<Vec<u8>, Error> {
+    verify_srcs(srcs.as_ref(), verify)?;
+
+    if verify {
+        let reconstruction = reconstruct_secrets_compressed(srcs);
+        let reconstructed_secret = reconstruction[0..(reconstruction.len() - 64)].to_vec();
+        let original_hash = &reconstruction[(reconstruction.len() - 64)..];
+        let mut hasher = Sha3_512::new();
+        hasher.update(&reconstructed_secret);
+        let calculated_hash = hasher.finalize();
+        //if &AsRef::<[u8]>::as_ref(&calculated_hash) != &original_hash {
+        if calculated_hash.as_slice() != original_hash {
+            return Err(Error::VerificationFailure(
+                hex::encode(original_hash),
+                hex::encode(&calculated_hash),
+            ));
+        }
+        Ok(reconstructed_secret)
+    } else {
+        Ok(reconstruct_secrets_compressed(srcs))
+    }
 }
 
+fn verify_srcs<T: AsRef<[u8]>>(srcs: &[T], verify: bool) -> Result<(), Error> {
+    if verify && (srcs[0].as_ref().len() <= 64) {
+        return Err(Error::NotEnoughBytesInSrc(srcs[0].as_ref().len() as u64));
+    }
+    let lens = srcs
+        .iter()
+        .map(|s| s.as_ref().len())
+        .collect::<Vec<usize>>();
+
+    if lens.iter().any(|len| len != &lens[0]) {
+        return Err(Error::InconsistentSourceLength(lens));
+    }
+    Ok(())
+}
 
 /// Reconstructs a secret from a given list of srcs. The srcs should all read the same number
 /// of bytes.
 /// Will rewind() secrets
 ///
 /// **src_len** MUST be an accurate length of the shares
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
+/// more gracefully and efficiently.
+#[deprecated(since = "0.11.0", note = "Use reconstruct() or Reconstructor instead")]
 pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     mut secret: T,
     srcs: &mut Vec<Box<dyn Read + 'a>>,
@@ -518,7 +697,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     verify: bool,
 ) -> Result<(), Error> {
     secret.rewind()?;
-    
+
     if (src_len < 2) || (verify & (src_len < 66)) {
         return Err(Error::NotEnoughBytesInSrc(src_len));
     }
@@ -547,8 +726,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     let mut x_vals = Vec::with_capacity(srcs.len());
     for src in srcs.iter_mut() {
         buf.clear();
-        src.take(1)
-            .read_to_end(&mut buf)?;
+        src.take(1).read_to_end(&mut buf)?;
         x_vals.push(buf[0]);
     }
 
@@ -581,7 +759,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
             let segments = get_shares(segment_size, srcs, &x_vals)?;
             // Now segments has a segment from each share src, reconstruct the secret up to that
             // point and write it to the destination
-            secret.write_all(reconstruct_secrets(segments)?.as_slice())?;
+            secret.write_all(reconstruct_secrets(segments).as_slice())?;
             curr_len = curr_len.saturating_sub(READ_SEGMENT_SIZE as u64);
         }
     }
@@ -589,7 +767,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     if verify {
         // Now read in the hash
         let hash_segments = get_shares(64, srcs, &x_vals)?;
-        let recon_hash = reconstruct_secrets(hash_segments)?;
+        let recon_hash = reconstruct_secrets(hash_segments);
         // Drop dest since if it is a file, we will be re-opening it to read from it to
         // calculate the hash. Ensure output is flushed
         secret.flush().ok();
@@ -603,6 +781,12 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
 }
 
 /// Performs the reconstruction of the shares from files with in the given **dir** with the give **stem**
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
+/// more gracefully and efficiently.
+#[allow(deprecated)]
+#[deprecated(since = "0.11.0", note = "Use reconstruct() or Reconstructor instead")]
 pub fn reconstruct_from_files<T: AsRef<Path>, U: Read + Write + Seek>(
     secret: U,
     dir: T,
@@ -640,19 +824,40 @@ pub fn reconstruct_from_files<T: AsRef<Path>, U: Read + Write + Seek>(
     reconstruct_from_srcs(secret, &mut share_files, len, verify)
 }
 
+/// Error for wrapped_sharing API, any error marked with (deprecated) will not be encountered
+/// if you avoid the deprecated functions.
 #[derive(Debug)]
 pub enum Error {
-    ReconstructionNotEqual,
+    /// An empty secret was provided
     EmptySecret,
+
+    /// An invalid number of shares was provided, needs to be > 1
     InvalidNumberOfShares(u8),
+
+    /// Not enough writable destinations were provided during sharing (deprecated)
     NotEnoughWriteableDestinations(usize, u8),
-    InvalidNumberOfBytesFromSource(u8),
+
+    /// The calculated hash after reconstruction did not match the hash found at the end of the
+    /// secret
     VerificationFailure(String, String),
+
+    /// The secret file was too large to share (deprecated)
     SecretTooLarge(u64),
+
+    /// std::io::Error but with the file path as additional context (deprecated)
     FileError(String, std::io::Error),
+
+    /// std::io::Error (deprecated)
     IOError(std::io::Error),
+
+    /// An error from basic_sharing functions, see [crate::basic_sharing::Error]
     OtherSharingError(crate::basic_sharing::Error),
+
+    /// During reconstruction, verify is set to true, but one or more of the inputs have < 65 bytes
     NotEnoughBytesInSrc(u64),
+
+    /// During reconstruction, the given source chunks did not have equal lengths.
+    InconsistentSourceLength(Vec<usize>),
 }
 
 impl From<crate::basic_sharing::Error> for Error {
@@ -664,10 +869,6 @@ impl From<crate::basic_sharing::Error> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::ReconstructionNotEqual => write!(
-                f,
-                "Reconstructed secret is not equivalent to initial secret"
-            ),
             Error::EmptySecret => write!(
                 f,
                 "Cannot share an empty secret. Secret cannot have a length of 0"
@@ -681,11 +882,6 @@ impl std::fmt::Display for Error {
                 f,
                 "Need {} writable destinations for shares, only given {}",
                 needed, given
-            ),
-            Error::InvalidNumberOfBytesFromSource(bytes) => write!(
-                f,
-                "Excess trailing bytes, must be divisible by {}. Trailing: {}",
-                8, bytes
             ),
             Error::VerificationFailure(original_hash, calculated_hash) => write!(
                 f,
@@ -714,20 +910,15 @@ Calculated Hash: {}",
                    "The given length ({}) is not long enough for reconstruction, must be >65 if verify, else >2", 
                    bytes 
                 )
-
+            }
+            Error::InconsistentSourceLength(lens) => {
+                write!(f, "The given chunks have differing lengths: {:?}", lens,)
             }
         }
     }
 }
 
 impl std::error::Error for Error {}
-
-#[allow(deprecated)]
-impl Error {
-    fn secret_file_error(_secret: &Secret, e: std::io::Error) -> Self {
-        e.into()
-    }
-}
 
 impl From<std::io::Error> for Error {
     fn from(source: std::io::Error) -> Self {
@@ -757,7 +948,7 @@ fn generate_share_file_paths<T: AsRef<Path>>(dir: T, stem: &str, num_files: u8) 
 mod tests {
     use super::*;
     use rand::seq::SliceRandom;
-    use rand::thread_rng;
+    use rand::{thread_rng, Rng};
 
     #[test]
     fn basic_share_reconstruction() {
@@ -766,7 +957,7 @@ mod tests {
         let num_shares = 2;
         let secret: Vec<u8> = vec![13, 240, 189];
         share_to_files(
-            Secret::InMemory(Cursor::new(secret.clone())),
+            Cursor::new(secret.clone()),
             dir,
             stem,
             num_shares,
@@ -775,7 +966,7 @@ mod tests {
         )
         .unwrap();
 
-        let mut recon = Secret::empty_in_memory();
+        let mut recon = Cursor::new(Vec::new());
 
         reconstruct_from_files(&mut recon, dir, stem, num_shares, true)
             .map_err(|_| ())
@@ -791,24 +982,19 @@ mod tests {
             }
         }
 
-        assert_eq!(secret, recon.unwrap_vec());
+        assert_eq!(secret, recon.into_inner());
     }
 
     #[test]
     fn zero_test() {
         let num_shares = 3;
         let secret: Vec<u8> = vec![0];
-        let shares = share_from_buf(
-            Secret::InMemory(Cursor::new(secret.clone())),
-            num_shares,
-            num_shares,
-            true,
-        )
-        .unwrap();
-        let mut recon = Secret::empty_in_memory();
+        let shares =
+            share_from_buf(Cursor::new(secret.clone()), num_shares, num_shares, true).unwrap();
+        let mut recon = Cursor::new(Vec::new());
         reconstruct_to_buf(&mut recon, &shares, true).unwrap();
 
-        assert_eq!(secret, recon.unwrap_vec());
+        assert_eq!(secret, recon.into_inner());
     }
 
     #[test]
@@ -816,18 +1002,13 @@ mod tests {
         let secret = vec![10, 20, 30, 50];
         let num_shares = 6;
         let num_shares_required = 3;
-        let mut shares = share_from_buf(
-            Secret::InMemory(Cursor::new(secret.clone())),
-            num_shares_required,
-            num_shares,
-            true,
-        )
-        .unwrap();
+        let mut shares =
+            share_from_buf(Cursor::new(&secret), num_shares_required, num_shares, true).unwrap();
         shares.as_mut_slice().shuffle(&mut thread_rng());
-        let mut recon_secret = Secret::empty_in_memory_with_capacity(secret.len());
+        let mut recon_secret = Cursor::new(Vec::new());
         reconstruct_to_buf(&mut recon_secret, &shares[0..3], true).unwrap();
 
-        assert_eq!(secret, recon_secret.unwrap_vec());
+        assert_eq!(secret, recon_secret.into_inner());
     }
 
     #[test]
@@ -835,17 +1016,10 @@ mod tests {
         let secret = vec![10, 20, 30, 50];
         let num_shares = 6;
         let num_shares_required = 3;
-        let shares = share(
-            &secret,
-            num_shares_required,
-            num_shares,
-            true,
-        )
-        .unwrap();
+        let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
         let recon_secret = reconstruct(&shares[0..3], true).unwrap();
 
         assert_eq!(secret, recon_secret);
-
     }
 
     #[test]
@@ -853,18 +1027,102 @@ mod tests {
         let secret = vec![10, 20, 30, 50];
         let num_shares = 6;
         let num_shares_required = 3;
-        let shares = share(
-            &secret,
-            num_shares_required,
-            num_shares,
-            false,
-        )
-        .unwrap();
+        let shares = share(&secret, num_shares_required, num_shares, false).unwrap();
         let recon_secret = reconstruct(&shares[0..3], false).unwrap();
 
         assert_eq!(secret, recon_secret);
-
     }
 
+    fn sharer_reconstructor_base<T: AsRef<[u8]> + Copy>(
+        secret_chunks: &[T],
+        shares_required: u8,
+        shares_to_create: u8,
+        verify: bool,
+    ) {
+        let mut share_dests = (0..shares_to_create)
+            .map(|_| Cursor::new(Vec::new()))
+            .collect::<Vec<Cursor<Vec<u8>>>>();
+        let secret_chunks = secret_chunks
+            .iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&[u8]>>();
+        let mut recon_dest = Cursor::new(Vec::new());
 
+        let mut builder = Sharer::builder()
+            .with_shares_required(shares_required)
+            .with_verify(verify);
+
+        for d in share_dests.iter_mut() {
+            builder = builder.with_output(d);
+        }
+        let mut sharer = builder.build().unwrap();
+
+        for secret in secret_chunks.iter() {
+            sharer.update(secret).unwrap();
+        }
+        sharer.finalize().unwrap();
+
+        let mut reconstructor = Reconstructor::new(&mut recon_dest, verify);
+        reconstructor
+            .update(
+                &share_dests
+                    .iter()
+                    .map(|s| s.get_ref())
+                    .collect::<Vec<&Vec<u8>>>(),
+            )
+            .unwrap();
+        reconstructor.finalize().unwrap();
+        let full_secret = secret_chunks
+            .iter()
+            .copied()
+            .flatten()
+            .copied()
+            .collect::<Vec<u8>>();
+        assert_eq!(&full_secret, &recon_dest.into_inner().as_slice());
+    }
+
+    #[test]
+    fn sharer_reconstructor_small() {
+        sharer_reconstructor_base(&[b"Hello world"], 2, 2, true);
+    }
+
+    #[test]
+    fn sharer_reconstructor_large() {
+        let secret = [b"Hello World"; 256]
+            .iter()
+            .copied()
+            .flatten()
+            .copied()
+            .collect::<Vec<u8>>();
+        sharer_reconstructor_base(&[&secret], 2, 2, true);
+    }
+
+    #[test]
+    fn sharer_reconstructor_many_updates() {
+        let secret = [b"Hello World"; 256];
+        sharer_reconstructor_base(&secret, 2, 2, true);
+    }
+
+    #[test]
+    fn sharer_reconstructor_many_updates_many_shares() {
+        let secret = [b"Hello World"; 256];
+        sharer_reconstructor_base(&secret, 3, 5, true);
+    }
+    #[test]
+    fn sharer_reconstructor_no_verify() {
+        let secret = [b"Hello World"; 256];
+        sharer_reconstructor_base(&secret, 3, 5, false);
+    }
+
+    #[test]
+    #[should_panic]
+    fn sharer_reconstructor_bad_shares() {
+        let mut recon_dest = Cursor::new(Vec::new());
+        let rando_shares = (0..2)
+            .map(|_| thread_rng().gen::<[u8; 32]>())
+            .collect::<Vec<[u8; 32]>>();
+        let mut reconstructor = Reconstructor::new(&mut recon_dest, true);
+        reconstructor.update(&rando_shares).unwrap();
+        reconstructor.finalize().unwrap();
+    }
 }

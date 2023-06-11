@@ -1,9 +1,15 @@
-use crate::geometry::*;
+//! Contains the core implementation of the library, in most cases [wrapped_sharing][crate::wrapped_sharing]
+//! should be utilized, otherwise these functions are useful for implementing a custom abstraction/wrapper.
+use crate::geometry::{Coeff, GaloisPolynomial};
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data.
 ///
+/// In a majority of cases if you are sharing more than a single byte, use [from_secrets] or
+/// [from_secrets_compressed] for much greater efficiency.
+///
+/// ## Args
 /// **secret:** The secret value that is to be split into shares
 ///
 /// **shares_required:** The number of shares required to recreate the secret
@@ -14,138 +20,74 @@ use rand::{Rng, RngCore, SeedableRng};
 /// **rand:** The rng source for the generated coefficients in the sharing process.
 /// The default is StdRng::from_entropy()
 ///
-/// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
+/// **NOTE: Using predictable RNG can be a security risk. If unsure, use None.**
+///
 pub fn from_secret(
     secret: u8,
     shares_required: u8,
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<(u8, u8)>, Error> {
-    if shares_required > shares_to_create {
-        return Err(Error::UnreconstructableSecret(
-            shares_to_create,
-            shares_required,
-        ));
-    }
-    if shares_to_create < 2 {
-        return Err(Error::InvalidNumberOfShares(shares_to_create));
-    }
-
-    // Use the given rng or if none was given, use from entropy
-    let mut shares: Vec<(u8, u8)> = Vec::with_capacity(shares_to_create as usize);
-    let mut share_poly = GaloisPolynomial::new();
-    let mut rng: Box<dyn RngCore> = match rand {
-        Some(rng) => Box::new(rng), 
-        None => Box::new(StdRng::from_entropy()), 
-    };
-
-    share_poly.set_coeff(Coeff(secret), 0);
-    for i in 1..shares_required {
-        let curr_co = rng.gen_range(2..255);
-        share_poly.set_coeff(Coeff(curr_co), i as usize);
-    }
-
-    for i in 1..=shares_to_create {
-        let curr_x = i as u8;
-        let curr_y = share_poly.get_y_value(curr_x);
-        shares.push((curr_x, curr_y));
-    }
-    Ok(shares)
+    Ok(
+        from_secrets_compressed(&[secret], shares_required, shares_to_create, rand)?
+            .into_iter()
+            .map(|v| (v[0], v[1]))
+            .collect(),
+    )
 }
 
 /// Reconstructs a secret from a given Vector of shares (points) and returns that secret.
 ///
 /// No guarantees are made that the shares are valid together and that the secret is valid.
-/// If there are enough shares, a secret will be generated.
-///
-/// **shares:** The vector of shares that are used to regenerate the polynomial and finding the
-///     secret. **shares**.len() must be >= **shares_needed**, else this will return an error.
-///
-/// This will return an error if **shares.len() < shares_needed**.
-pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
-    GaloisPolynomial::get_y_intercept_from_points(shares.as_slice())
+/// If there are enough shares, reconstruction will succeed.
+pub fn reconstruct_secret<T: AsRef<[(u8, u8)]>>(shares: T) -> u8 {
+    GaloisPolynomial::get_y_intercept_from_points(shares.as_ref())
 }
 
-/// This is a wrapper around [from_secret]
-/// that loops through the *secret* slice and secret.
+/// This is a wrapper around [from_secret] and performs the same operation
+/// but across each byte.
 ///
-/// The format this returns the secrets in is, since this is how they would be
-/// distributed:
-/// ```notrust
-/// share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
+/// For additional documentation, see [from_secret]
 ///
-/// share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-/// ```
-/// **secret:** A slice of bytes to be used to create the vector of share vectors
-///
-/// **rand:** The rng source for the generated coefficients in the sharing process.
-/// The default is StdRng::from_entropy()
-///
-/// *For the rest of the arguments, see [from_secret]*
-///
-/// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
-pub fn from_secrets(
-    secret: &[u8],
+/// **NOTE: Using predictable RNG can be a security risk. If unsure, use None.**
+pub fn from_secrets<T: AsRef<[u8]>>(
+    secret: T,
     shares_required: u8,
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
-    if secret.is_empty() {
-        return Err(Error::EmptySecretArray);
-    }
-
-    // If rand is None, create a new rand and return it's reference
-    let mut from_entropy: Box<dyn RngCore>;
-    let mut rand = match rand {
-        Some(rng) => rng,
-        None => {
-            from_entropy = Box::new(StdRng::from_entropy());
-            &mut from_entropy
-        }
-    };
-
-    let mut list_of_share_lists: Vec<Vec<(u8, u8)>> = Vec::with_capacity(secret.len());
-
-    for s in secret {
-        match from_secret(*s, shares_required, shares_to_create, Some(&mut rand)) {
-            Ok(shares) => {
-                // Now this list needs to be transposed:
-                list_of_share_lists.push(shares);
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-    }
-    let list_of_share_lists = transpose_vec_matrix(list_of_share_lists).unwrap();
-    Ok(list_of_share_lists)
+    Ok(
+        from_secrets_compressed(secret, shares_required, shares_to_create, rand)?
+            .into_iter()
+            .map(expand_share)
+            .collect(),
+    )
 }
 
-/// This is a wrapper around [reconstruct_secret] that iterates over each Vec of shares and
+/// See [reconstruct_secret] for more information
+///
+/// This is a wrapper around [reconstruct_secret] that iterates over each list of shares and
 /// reconstructs their respective byte of the secret.
 ///
-/// It expects the shares to be in this format since this is how they are distributed.
-/// In other words, the share lists generated from
-/// ```notrust
-/// share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
-///
-/// share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-/// ```
-/// **share_lists:** A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
-///     of the secret.
-///
-/// *For the rest of the arguments, see [reconstruct_secret]*
-pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Result<Vec<u8>, Error> {
-    let mut secrets: Vec<u8> = Vec::with_capacity(share_lists[0].len());
-    let share_lists = transpose_vec_matrix(share_lists)?;
-    for point_list in share_lists {
-        secrets.push(reconstruct_secret(point_list));
+/// Assumes each list is of equal length, passing lists with different lengths will result in
+/// undefined behavior. If you need length checks, see [wrapped_sharing::reconstruct][crate::wrapped_sharing::reconstruct]
+pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
+    let share_lists = share_lists.as_ref();
+    let len = share_lists[0].as_ref().len();
+    let mut result = Vec::with_capacity(len);
+    for idx in 0..len {
+        result.push(reconstruct_secret(
+            share_lists
+                .iter()
+                .map(|s| s.as_ref()[idx])
+                .collect::<Vec<(u8, u8)>>(),
+        ));
     }
-    Ok(secrets)
+    result
 }
 
-/// Wrapper around its corresponding share function, this simply uses the [reduce_share]
-/// function to reduce the size of the share.
+/// Wrapper around its corresponding share function but deduplicates the x-value
+/// from all the points to reduce the size of the share.
 ///
 /// Since each share is a collection of points, (u8, u8) where the x-value is identical
 /// throughout the share, we can pull out the X value, which halves the size of the
@@ -155,123 +97,98 @@ pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Result<Vec<u8>, E
 ///
 /// (1-byte X-value),(N-byte share)
 ///
-/// The 'no_points' functions are to be used exclusively with eachother and are not
-/// meant to mix with the other raw_share functions and vice-versa.
-///
-/// See [from_secrets] for more documentation.
-pub fn from_secrets_no_points(
-    secret: &[u8],
+/// *For additional documentation, see [from_secrets]*
+pub fn from_secrets_compressed<T: AsRef<[u8]>>(
+    secret: T,
     shares_required: u8,
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<u8>>, Error> {
-    Ok(
-        from_secrets(secret, shares_required, shares_to_create, rand)?
-            .into_iter()
-            .map(reduce_share)
-            .map(|(x, ys)| {
-                let mut new_share = Vec::with_capacity(ys.len() + 1);
-                new_share.push(x);
-                new_share.extend_from_slice(ys.as_slice());
-                new_share
-            })
-            .collect(),
-    )
+    let secret = secret.as_ref();
+    if shares_required > shares_to_create {
+        return Err(Error::UnreconstructableSecret(
+            shares_to_create,
+            shares_required,
+        ));
+    }
+
+    if shares_to_create < 2 {
+        return Err(Error::InvalidNumberOfShares(shares_to_create));
+    }
+
+    let mut rng: Box<dyn RngCore> = match rand {
+        Some(rng) => Box::new(rng),
+        None => Box::new(StdRng::from_entropy()),
+    };
+
+    // Create the vecs
+    let mut shares_list = (0..shares_to_create)
+        .map(|_| Vec::with_capacity(secret.len() + 1))
+        .enumerate()
+        .map(|(i, mut v)| {
+            v.push((i + 1) as u8); // This is the x coefficent of each share.
+            v
+        })
+        .collect::<Vec<Vec<u8>>>();
+    for s in secret {
+        let mut share_poly = GaloisPolynomial::new();
+        share_poly.set_coeff(Coeff(*s), 0);
+        for i in 1..shares_required {
+            let curr_co = rng.gen_range(2..255);
+            share_poly.set_coeff(Coeff(curr_co), i as usize);
+        }
+        for x in 0..shares_to_create {
+            shares_list[x as usize].push(share_poly.get_y_value(x + 1))    
+        }
+    }
+    Ok(shares_list)
 }
 
-/// Wrapper around its corresponding share function, it simply uses the [expand_share]
+/// Wrapper around its [reconstruct_secrets], accepts shares created by [from_secrets_compressed]
 /// function to reconstruct the secret from shares created using
-/// [from_secrets_no_points]
+/// [from_secrets_compressed]
 ///
 /// The format the shares are to be in are as follows:
 ///
 /// (1-byte X-value),(N-byte share)
 ///
-/// The 'no_points' functions are to be used exclusively with eachother and are not
-/// meant to mix with the other raw_share functions and vice-versa.
-///
 /// See [reconstruct_secrets] for more documentation.
-pub fn reconstruct_secrets_no_points(share_lists: Vec<Vec<u8>>) -> Result<Vec<u8>, Error> {
-    reconstruct_secrets(share_lists.into_iter().map(expand_share).collect())
+pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
+    let share_lists = share_lists.as_ref();
+    let len = share_lists[0].as_ref().len();
+    let mut result = Vec::with_capacity(len);
+    for idx in 1..len {
+        result.push(reconstruct_secret(
+            share_lists
+                .iter()
+                .map(|s| (s.as_ref()[0], s.as_ref()[idx]))
+                .collect::<Vec<(u8, u8)>>(),
+        ));
+    }
+    result
 }
 
-/// This 'compresses' a share by pulling out it's X value from each point since
-/// they will be identical.
-///
-/// This allows for more optimal storage of the share.
-pub fn reduce_share(share: Vec<(u8, u8)>) -> (u8, Vec<u8>) {
-    (share[0].0, share.into_iter().map(|(_, y)| y).collect())
-}
-
-/// This 'decompresses' a share by taking the x value and adding it to each
-/// y value.
-///
-/// This allows for the share to be properly reconstructed.
-pub fn expand_share(share: Vec<u8>) -> Vec<(u8, u8)> {
+fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
+    let share = share.as_ref();
     let x_value = share[0];
     share[1..].iter().map(|y| (x_value, *y)).collect()
 }
 
-/// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
-///
-/// **matrix:** The matrix to be transposed, must be a valid matrix else an error is returned.
-#[allow(clippy::needless_range_loop)]
-pub fn transpose_vec_matrix<T: Clone>(matrix: Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
-    for i in 1..matrix.len() {
-        if matrix[i - 1].len() != matrix[i].len() {
-            return Err(Error::InvalidMatrix {
-                index_of_invalid_length_row: i,
-            });
-        }
-    }
-
-    let col_len = matrix.len();
-    let row_len = matrix[0].len();
-
-    let mut transpose: Vec<Vec<T>> = Vec::with_capacity(col_len);
-
-    for _ in 0..matrix[0].len() {
-        transpose.push(Vec::with_capacity(row_len));
-    }
-
-    /*for i in 0..matrix.len() {
-        for j in 0..matrix[i].len() {
-            transpose[j].push(matrix[i][j].clone());
-        }
-    }*/
-    for i in 0..matrix.len() {
-        for j in 0..matrix[i].len() {
-            transpose[j].push(matrix[i][j].clone());
-        }
-    }
-    Ok(transpose)
-}
-
-/// Local Error enum, used to report errors that would only occur within this file.
 #[derive(Debug)]
 pub enum Error {
-    NotEnoughShares { given: u8, required: u8 },
-    InvalidMatrix { index_of_invalid_length_row: usize },
+    /// shares_required was < 2
     InvalidNumberOfShares(u8),
+
+    /// shares_required was > share_to_create
     UnreconstructableSecret(u8, u8),
+
+    /// The given secret was empty
     EmptySecretArray,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::NotEnoughShares { given, required } => write!(
-                f,
-                "Not enough shares to recreate secret: Given: {}; Required: {}",
-                given, required
-            ),
-            Error::InvalidMatrix {
-                index_of_invalid_length_row,
-            } => write!(
-                f,
-                "Row {} is not the same length as previous rows",
-                index_of_invalid_length_row
-            ),
             Error::EmptySecretArray => write!(f, "Secret array should not be empty"),
             Error::InvalidNumberOfShares(num) => {
                 write!(f, "Need to generate at least 2 shares. Requested: {}", num)
@@ -323,53 +240,11 @@ mod tests {
     }
 
     #[test]
-    fn transpose() {
-        let matrix = vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8, 9]];
-
-        let matrix1 = vec![vec![1, 4, 7], vec![2, 5, 8], vec![3, 6, 9]];
-
-        let matrix2 = vec![vec![1, 2, 3, 4], vec![5, 6, 7, 8]];
-
-        let matrix3 = vec![vec![1, 5], vec![2, 6], vec![3, 7], vec![4, 8]];
-
-        assert_eq!(transpose_vec_matrix(matrix).unwrap(), matrix1);
-        assert_eq!(transpose_vec_matrix(matrix2).unwrap(), matrix3);
-    }
-
-    #[cfg(feature = "benchmark_tests")]
-    #[test]
-    fn large_data_and_benchmark() {
-        use std::time::Instant;
-
-        let secret = "According to all known laws of aviation, 
-            there is no way a bee should be able to fly.
-            Its wings are too small to get its fat little body off the ground.
-            The bee, of course, flies anyway
-            because bees don't care what humans think is impossible.";
-        let shares_required = 5;
-        let shares_to_create = 5;
-
-        let now = Instant::now();
-
-        let share_lists =
-            from_secrets(secret.as_bytes(), shares_required, shares_to_create).unwrap();
-
-        let recon_secret_vec = reconstruct_secrets(share_lists).unwrap();
-        let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
-
-        let time_elap = now.elapsed().as_millis();
-
-        println!("Time elapsed: {} milliseconds", time_elap);
-
-        assert_eq!(secret, &recon_secret[..])
-    }
-
-    #[test]
-    fn no_points() {
+    fn compressed() {
         let secret = vec![10, 20, 30, 40, 50];
         let n = 3;
-        let shares = from_secrets_no_points(&secret, n, n, None).unwrap();
-        let recon = reconstruct_secrets_no_points(shares).unwrap();
+        let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
+        let recon = reconstruct_secrets_compressed(shares);
         assert_eq!(secret, recon);
     }
 }

@@ -1,4 +1,10 @@
+#![doc = include_str!("../README.md")]
+
 pub mod basic_sharing;
+#[allow(dead_code)]
 mod geometry;
-mod utils;
 pub mod wrapped_sharing;
+
+pub mod prelude {
+    pub use crate::wrapped_sharing::{reconstruct, share, Reconstructor, Sharer};
+}

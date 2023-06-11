@@ -8,6 +8,11 @@ lazy_static! {
         PrimitivePolynomialField::new(field::PRIMITIVES[0]).unwrap();
 }
 
+//============================================================================
+// There's a lot of unused code in here, but I want to keep the implementation
+// in case it becomes useful in the future.
+//============================================================================
+
 /// A wrapper around u8, used to implement arithmetic operations over a finite field
 #[derive(Clone, Copy, Debug)]
 pub struct Coeff(pub u8);
