@@ -160,23 +160,21 @@ fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
     share[1..].iter().map(|y| (x_value, *y)).collect()
 }
 
-/// Local Error enum, used to report errors that would only occur within this file.
 #[derive(Debug)]
 pub enum Error {
-    NotEnoughShares { given: u8, required: u8 },
+    /// shares_required was < 2
     InvalidNumberOfShares(u8),
+    
+    /// shares_required was > share_to_create
     UnreconstructableSecret(u8, u8),
+
+    /// The given secret was empty 
     EmptySecretArray,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::NotEnoughShares { given, required } => write!(
-                f,
-                "Not enough shares to recreate secret: Given: {}; Required: {}",
-                given, required
-            ),
             Error::EmptySecretArray => write!(f, "Secret array should not be empty"),
             Error::InvalidNumberOfShares(num) => {
                 write!(f, "Need to generate at least 2 shares. Requested: {}", num)
