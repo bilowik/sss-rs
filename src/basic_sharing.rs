@@ -4,6 +4,7 @@ use rand::{Rng, RngCore, SeedableRng};
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data.
 ///
+/// ## Args
 /// **secret:** The secret value that is to be split into shares
 ///
 /// **shares_required:** The number of shares required to recreate the secret
@@ -14,7 +15,7 @@ use rand::{Rng, RngCore, SeedableRng};
 /// **rand:** The rng source for the generated coefficients in the sharing process.
 /// The default is StdRng::from_entropy()
 ///
-/// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
+/// **NOTE: Using predictable RNG can be a security risk. If unsure, use None.**
 pub fn from_secret(
     secret: u8,
     shares_required: u8,
@@ -30,34 +31,17 @@ pub fn from_secret(
 /// Reconstructs a secret from a given Vector of shares (points) and returns that secret.
 ///
 /// No guarantees are made that the shares are valid together and that the secret is valid.
-/// If there are enough shares, a secret will be generated.
-///
-/// **shares:** The vector of shares that are used to regenerate the polynomial and finding the
-///     secret. **shares**.len() must be >= **shares_needed**, else this will return an error.
-///
-/// This will return an error if **shares.len() < shares_needed**.
+/// If there are enough shares, reconstruction will succeed. 
 pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
     GaloisPolynomial::get_y_intercept_from_points(shares.as_slice())
 }
 
-/// This is a wrapper around [from_secret]
-/// that loops through the *secret* slice and secret.
+/// This is a wrapper around [from_secret] and performs the same operation
+/// but across each byte.
 ///
-/// The format this returns the secrets in is, since this is how they would be
-/// distributed:
-/// ```notrust
-/// share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
+/// For additional documentation, see [from_secret]
 ///
-/// share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-/// ```
-/// **secret:** A slice of bytes to be used to create the vector of share vectors
-///
-/// **rand:** The rng source for the generated coefficients in the sharing process.
-/// The default is StdRng::from_entropy()
-///
-/// *For the rest of the arguments, see [from_secret]*
-///
-/// NOTE: Using predictable RNG can be a security risk. If unsure, use None.
+/// **NOTE: Using predictable RNG can be a security risk. If unsure, use None.**
 pub fn from_secrets(
     secret: &[u8],
     shares_required: u8,
@@ -88,27 +72,15 @@ pub fn from_secrets(
     Ok(list_of_share_lists)
 }
 
-/// This is a wrapper around [reconstruct_secret] that iterates over each Vec of shares and
+/// This is a wrapper around [reconstruct_secret] that iterates over each list of shares and
 /// reconstructs their respective byte of the secret.
-///
-/// It expects the shares to be in this format since this is how they are distributed.
-/// In other words, the share lists generated from
-/// ```notrust
-/// share1byte1, share1byte2, share1byte3, ..., share1byte<share_lists.len()>
-///
-/// share2byte1, share2byte2, share2byte3, ..., share2byte<share_lists.len()>
-/// ```
-/// **share_lists:** A Vec of Vecs, with each Vec containing the shares needed to reconstruct a byte
-///     of the secret.
-///
-/// *For the rest of the arguments, see [reconstruct_secret]*
 pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Vec<u8> {
     let len = share_lists[0].len();
     (0..len).map(|idx| reconstruct_secret(share_lists.iter().map(|s| s[idx]).collect())).collect()
 }
 
-/// Wrapper around its corresponding share function, this simply uses the [reduce_share]
-/// function to reduce the size of the share.
+/// Wrapper around its corresponding share function but deduplicates the x-value
+/// from all the points to reduce the size of the share.
 ///
 /// Since each share is a collection of points, (u8, u8) where the x-value is identical
 /// throughout the share, we can pull out the X value, which halves the size of the
@@ -118,10 +90,7 @@ pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Vec<u8> {
 ///
 /// (1-byte X-value),(N-byte share)
 ///
-/// The 'no_points' functions are to be used exclusively with eachother and are not
-/// meant to mix with the other raw_share functions and vice-versa.
-///
-/// See [from_secrets] for more documentation.
+/// *For additional documentation, see [from_secrets]*
 pub fn from_secrets_no_points(
     secret: &[u8],
     shares_required: u8,
@@ -170,7 +139,7 @@ pub fn from_secrets_no_points(
     Ok(shares_list)
 }
 
-/// Wrapper around its corresponding share function, it simply uses the [expand_share]
+/// Wrapper around its [reconstruct_secrets], accepts shares created by [from_secrets_no_points]
 /// function to reconstruct the secret from shares created using
 /// [from_secrets_no_points]
 ///
@@ -178,28 +147,14 @@ pub fn from_secrets_no_points(
 ///
 /// (1-byte X-value),(N-byte share)
 ///
-/// The 'no_points' functions are to be used exclusively with eachother and are not
-/// meant to mix with the other raw_share functions and vice-versa.
-///
 /// See [reconstruct_secrets] for more documentation.
 pub fn reconstruct_secrets_no_points(share_lists: Vec<Vec<u8>>) -> Vec<u8> {
     reconstruct_secrets(share_lists.into_iter().map(expand_share).collect())
 
 }
 
-/// This 'compresses' a share by pulling out it's X value from each point since
-/// they will be identical.
-///
-/// This allows for more optimal storage of the share.
-pub fn reduce_share(share: Vec<(u8, u8)>) -> (u8, Vec<u8>) {
-    (share[0].0, share.into_iter().map(|(_, y)| y).collect())
-}
 
-/// This 'decompresses' a share by taking the x value and adding it to each
-/// y value.
-///
-/// This allows for the share to be properly reconstructed.
-pub fn expand_share(share: Vec<u8>) -> Vec<(u8, u8)> {
+fn expand_share(share: Vec<u8>) -> Vec<(u8, u8)> {
     let x_value = share[0];
     share[1..].iter().map(|y| (x_value, *y)).collect()
 }
