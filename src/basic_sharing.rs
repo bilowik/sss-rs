@@ -1,6 +1,5 @@
-//! Contains the core implementation of the library, most of the time you will likely want to utilize
-//! [wrapped_sharing][crate::wrapped_sharing] unless you are implementing an abstraction/wrapper
-//! yourself around these functions. 
+//! Contains the core implementation of the library, in most cases [wrapped_sharing][crate::wrapped_sharing] 
+//! should be utilized, otherwise these functions are useful for implementing a custom abstraction/wrapper.
 use crate::geometry::{GaloisPolynomial, Coeff};
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
