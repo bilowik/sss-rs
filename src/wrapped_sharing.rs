@@ -8,6 +8,31 @@ use std::path::Path;
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
 
+/// Used to share in chunks, useful for large files.
+///
+///```
+/// use sss_rs::wrapped_sharing::{Sharer, Reconstructor};
+/// use std::io::Cursor;
+/// 
+/// let mut dest1 = Cursor::new(Vec::new());
+/// let mut dest2 = Cursor::new(Vec::new());
+/// let full_secret = b"This is a very long secret read in from a buffered file reader";
+/// let secret_chunks = full_secret.chunks(8).collect::<Vec<&[u8]>>();
+/// 
+/// let mut sharer = Sharer::builder()
+///     .with_shares_required(2)
+///     .with_output(&mut dest1)
+///     .with_output(&mut dest2)
+///     .with_verify(true)
+///     .build()
+///     .unwrap();
+/// 
+/// for secret in secret_chunks.iter() {
+///     sharer.update(secret).unwrap();
+/// }
+/// sharer.finalize().unwrap();
+///```
+///
 pub struct Sharer<'a> {
     share_outputs: Vec<Box<dyn Write + 'a>>,
     bytes_shared: u64,
@@ -16,6 +41,7 @@ pub struct Sharer<'a> {
     shares_required: u8,
 }
 
+/// Builder pattern for [Sharer], use [Sharer::builder] to instantiate.
 pub struct SharerBuilder<'a> {
     share_outputs: Vec<Box<dyn Write + 'a>>,
     shares_required: u8,
@@ -120,7 +146,42 @@ fn noop_hash(_hasher: &mut Option<Sha3_512>, _bytes: &[u8]) {
 
 }
 
-
+/// Used to reconstruct a secret in chunks, useful for large files.
+///
+///
+/// ```rust
+/// use sss_rs::wrapped_sharing::{Sharer, Reconstructor};
+/// use std::io::Cursor;
+/// 
+/// let mut dest1 = Cursor::new(Vec::new());
+/// let mut dest2 = Cursor::new(Vec::new());
+/// let full_secret = b"This is a very long secret read in from a buffered file reader";
+///
+/// # let secret_chunks = full_secret.chunks(8).collect::<Vec<&[u8]>>();
+/// # let mut recon_dest = Cursor::new(Vec::new());
+/// # 
+/// # let mut sharer = Sharer::builder()
+/// #     .with_shares_required(2)
+/// #     .with_output(&mut dest1)
+/// #     .with_output(&mut dest2)
+/// #     .with_verify(true)
+/// #     .build()
+/// #     .unwrap();
+/// # 
+/// # for secret in secret_chunks.iter() {
+/// #     sharer.update(secret).unwrap();
+/// # }
+/// # sharer.finalize().unwrap();
+/// // *The secret is shared into dest1 and dest2...*
+/// 
+/// let mut reconstructor = Reconstructor::new(&mut recon_dest, true);
+/// 
+/// for (chunk1, chunk2) in dest1.get_ref().chunks(4).zip(dest2.get_ref().chunks(4)) {
+///     reconstructor.update(&[chunk1, chunk2]).unwrap();
+/// }
+/// reconstructor.finalize().unwrap();
+/// assert_eq!(&full_secret, &recon_dest.into_inner().as_slice());
+/// ```
 pub struct Reconstructor<T: Write> {
     secret_dest: T,
     hasher: Option<Sha3_512>,
