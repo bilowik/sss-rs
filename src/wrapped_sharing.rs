@@ -444,8 +444,8 @@ pub fn share_to_writables<'a, T: Read + Seek>(
 /// information.
 ///
 /// Wraps around from_secrets_compressed with the option to use hash verification.
-pub fn share(
-    secret: &[u8],
+pub fn share<T: AsRef<[u8]>>(
+    secret: T,
     shares_required: u8,
     shares_to_create: u8,
     verify: bool,
@@ -454,6 +454,7 @@ pub fn share(
     // We want to avoid doing an extra allocation when verify is false and we also 
     // want to avoid duplicating any code.
     let mut secret_and_hash; 
+    let secret = secret.as_ref();
     let full_secret = if verify {
         secret_and_hash = Vec::with_capacity(secret.len() + 64);
         secret_and_hash.extend(secret);
