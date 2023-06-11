@@ -20,7 +20,7 @@ This implementation uses arithmetic over GF(256) for the core secret sharing alg
 ### Functional wrapped API
 Useful for working with relatively small secrets.
 ```rust
-use sss_rs::wrapped_sharing::{share, reconstruct};
+use sss_rs::prelude::*;
 let shares_required = 3;
 let shares_to_create = 3;
 let verify = true;
@@ -34,7 +34,7 @@ assert_eq!(secret, recon);
 Useful for working with very large secrets and shares that you don't want all loaded into
 memory at once. 
 ```rust
-use sss_rs::wrapped_sharing::{Sharer, Reconstructor};
+use sss_rs::prelude::*;
 use std::io::Cursor;
 
 let mut dest1 = Cursor::new(Vec::new());
