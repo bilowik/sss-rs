@@ -155,12 +155,17 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
 /// See [reconstruct_secrets] for more documentation.
 pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
     let share_lists = share_lists.as_ref();
-    reconstruct_secrets(
-        share_lists
-            .into_iter()
-            .map(expand_share)
-            .collect::<Vec<Vec<(u8, u8)>>>(),
-    )
+    let len = share_lists[0].as_ref().len();
+    let mut result = Vec::with_capacity(len);
+    for idx in 1..len {
+        result.push(reconstruct_secret(
+            share_lists
+                .iter()
+                .map(|s| (s.as_ref()[0], s.as_ref()[idx]))
+                .collect::<Vec<(u8, u8)>>(),
+        ));
+    }
+    result
 }
 
 fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
