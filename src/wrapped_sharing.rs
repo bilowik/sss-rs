@@ -696,17 +696,39 @@ pub fn reconstruct_from_files<T: AsRef<Path>, U: Read + Write + Seek>(
     reconstruct_from_srcs(secret, &mut share_files, len, verify)
 }
 
+/// Error for wrapped_sharing API, any error marked with (deprecated) will not be encountered
+/// if you avoid the deprecated functions.
 #[derive(Debug)]
 pub enum Error {
+    /// An empty secret was provided
     EmptySecret,
+
+    /// An invalid number of shares was provided, needs to be > 1
     InvalidNumberOfShares(u8),
+
+    /// Not enough writable destinations were provided during sharing (deprecated)
     NotEnoughWriteableDestinations(usize, u8),
+
+    /// The calculated hash after reconstruction did not match the hash found at the end of the
+    /// secret
     VerificationFailure(String, String),
+
+    /// The secret file was too large to share (deprecated)
     SecretTooLarge(u64),
+
+    /// std::io::Error but with the file path as additional context (deprecated) 
     FileError(String, std::io::Error),
+
+    /// std::io::Error (deprecated)
     IOError(std::io::Error),
+
+    /// An error from basic_sharing functions, see [crate::basic_sharing::Error]
     OtherSharingError(crate::basic_sharing::Error),
+
+    /// During reconstruction, verify is set to true, but one or more of the inputs have < 65 bytes
     NotEnoughBytesInSrc(u64),
+
+    /// During reconstruction, the given source chunks did not have equal lengths. 
     InconsistentSourceLength(Vec<usize>),
 }
 
