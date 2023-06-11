@@ -58,6 +58,10 @@ pub struct SharerBuilder<'a> {
 }
 
 impl<'a> Sharer<'a> {
+    /// Creates a new instance of Sharer
+    ///
+    /// Susceptible to any underlying [std::io::Error] that can be produced by the underlying 
+    /// writable outputs.
     pub fn new(mut share_outputs: Vec<Box<dyn Write + 'a>>, shares_required: u8, verify: bool) -> Result<Self, Error> {
         let hash_op = if verify {
             add_to_hash
@@ -90,7 +94,12 @@ impl<'a> Sharer<'a> {
     pub fn get_shares_required(&self) -> u8 {
         self.shares_required as u8
     }
-
+    
+    /// Split the given chunk of data into shares and write them out to the 
+    /// set outputs. 
+    ///
+    /// Susceptible to any underlying [std::io::Error] that can be produced by the underlying 
+    /// writable outputs.
     pub fn update<T: AsRef<[u8]>>(&mut self, data: T) -> Result<usize, Error> {
         let bytes = data.as_ref();
         let bytes_shared = bytes.len();
@@ -107,7 +116,11 @@ impl<'a> Sharer<'a> {
         self.bytes_shared += bytes_shared as u64;
         Ok(bytes_shared as usize)
     }
-
+    
+    /// Finalizes the sharing, and returns the number of bytes shared.
+    ///
+    /// If verify was set to true, the underlying hasher will produce a hash that is then also 
+    /// split into shares and written out to the set outputs.
     pub fn finalize(mut self) -> Result<u64, Error> {
         if let Some(hash) = self.hasher.as_mut().map(|hasher| hasher.finalize_reset()) {
             // We want to write out the hash as well.
@@ -125,22 +138,29 @@ impl<'a> SharerBuilder<'a> {
             verify: false,
         }
     }
-
+    
+    /// Adds an output to the list of outputs to split the secret into
     pub fn with_output<T: Write + 'a>(mut self, output: T) -> Self {
         self.share_outputs.push(Box::new(output) as Box<dyn Write + 'a>);
         self
     }
 
+    /// Will calculate a hash of the secret and append it at the end, sharing it
+    /// along with the secret, allowing for verification of valid reconstruction.
     pub fn with_verify(mut self, verify: bool) -> Self {
         self.verify = verify;
         self
     }
-
+    
+    /// Sets the number of shares required for reconstruction. 
+    ///
+    /// This must not be < 2 or > the number of provided outputs. Default is 2 if unset.
     pub fn with_shares_required(mut self, shares_required: u8) -> Self {
         self.shares_required = shares_required;
         self
     }
-
+    
+    /// Instantiates the Sharer
     pub fn build(self) -> Result<Sharer<'a>, Error> {
         Sharer::new(self.share_outputs, self.shares_required, self.verify)
     }
@@ -155,7 +175,6 @@ fn noop_hash(_hasher: &mut Option<Sha3_512>, _bytes: &[u8]) {
 }
 
 /// Used to reconstruct a secret in chunks, useful for large files.
-///
 ///
 /// ```rust
 /// use sss_rs::wrapped_sharing::{Sharer, Reconstructor};
@@ -197,9 +216,11 @@ pub struct Reconstructor<T: Write> {
     update_inner: fn(&mut Reconstructor<T>, &[&[u8]]) -> Result<(), Error>,
     hash_op: fn(&mut Option<Sha3_512>, &[u8]),
     last_64_bytes: Vec<u8>,
+    bytes_reconstructed: u64,
 }
 
 impl<T: Write> Reconstructor<T> {
+    /// Creates a new instance of Reconstructor
     pub fn new(secret_dest: T, verify: bool) -> Self {
         let hash_op = if verify {
             add_to_hash
@@ -214,9 +235,17 @@ impl<T: Write> Reconstructor<T> {
             update_inner: Reconstructor::first_update,
             hash_op,
             last_64_bytes: Vec::with_capacity(128),
+            bytes_reconstructed: 0,
         }
     }
-
+    
+    /// Takes the given list of chunks and reconstructs a chunk of the secret, writing it to
+    /// the set output.
+    ///
+    /// An error will be returned if all the blocks in blocks don't have identical lengths.
+    /// 
+    /// Also susceptible to any underlying [std::io::Error] that can be produced by the underlying 
+    /// writable output.
     pub fn update<V: AsRef<[U]>, U: AsRef<[u8]>>(&mut self, blocks: V) -> Result<usize, Error> {
         let blocks = blocks.as_ref();
         let lens: Vec<usize> = blocks.iter().map(|block| block.as_ref().len()).collect();
@@ -225,6 +254,7 @@ impl<T: Write> Reconstructor<T> {
             return Err(Error::InconsistentSourceLength(lens));
         }
         (self.update_inner)(self, blocks.iter().map(|b| b.as_ref()).collect::<Vec<&[u8]>>().as_ref())?;
+        self.bytes_reconstructed += lens[0] as u64;
         Ok(lens[0])
         
     }
@@ -272,8 +302,14 @@ impl<T: Write> Reconstructor<T> {
 
         Ok(())
     }
-
-    pub fn finalize(mut self) -> Result<(), Error> {
+    /// Writes out any remaining bytes or calculates and compares hashes if verify was set.
+    ///
+    /// Returns the total number of bytes reconstructed. Note this is not the total number of bytes
+    /// fed into the Reconstructor.
+    ///
+    /// Susceptible to any underlying [std::io::Error] that can be produced by the underlying 
+    /// writable output.
+    pub fn finalize(mut self) -> Result<u64, Error> {
         if let Some(hasher) = self.hasher.as_mut() {
             // verify was enabled, so the last 64 bytes are assumed to be the hash.
             let calculated_hash = hasher.finalize_reset();
@@ -286,7 +322,7 @@ impl<T: Write> Reconstructor<T> {
             self.secret_dest.write_all(&self.last_64_bytes)?;
         }
 
-        Ok(())
+        Ok(self.bytes_reconstructed)
     }
 }
 
