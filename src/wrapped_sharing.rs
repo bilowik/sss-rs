@@ -148,7 +148,8 @@ impl<T: Write> Reconstructor<T> {
         }
     }
 
-    pub fn update<U: AsRef<[u8]>>(&mut self, blocks: &[U]) -> Result<usize, Error> {
+    pub fn update<V: AsRef<[U]>, U: AsRef<[u8]>>(&mut self, blocks: V) -> Result<usize, Error> {
+        let blocks = blocks.as_ref();
         let lens: Vec<usize> = blocks.iter().map(|block| block.as_ref().len()).collect();
 
         if lens.iter().any(|len| len != &lens[0]) {
