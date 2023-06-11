@@ -271,7 +271,7 @@ impl<T: Read + Seek> SecretTrait for T {
 /// Iteration can continue, but the behavior is undefined as it may be
 /// able to continue reading or may not depending on the initial error. See std::io::Error for
 /// possible errors.
-pub struct SecretIterator<'a>{
+struct SecretIterator<'a>{
     reader: Box<dyn Read + 'a>, // reader is a reader of the vec in secret, or it's to an open file
 }
 impl<'a> std::iter::Iterator for SecretIterator<'a> {
