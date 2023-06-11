@@ -8,10 +8,6 @@ use std::path::Path;
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
 pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
 
-
-
-
-
 pub struct Sharer<'a> {
     share_outputs: Vec<Box<dyn Write + 'a>>,
     bytes_shared: u64,
@@ -699,11 +695,9 @@ pub fn reconstruct_from_files<T: AsRef<Path>, U: Read + Write + Seek>(
 
 #[derive(Debug)]
 pub enum Error {
-    ReconstructionNotEqual,
     EmptySecret,
     InvalidNumberOfShares(u8),
     NotEnoughWriteableDestinations(usize, u8),
-    InvalidNumberOfBytesFromSource(u8),
     VerificationFailure(String, String),
     SecretTooLarge(u64),
     FileError(String, std::io::Error),
@@ -722,10 +716,6 @@ impl From<crate::basic_sharing::Error> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::ReconstructionNotEqual => write!(
-                f,
-                "Reconstructed secret is not equivalent to initial secret"
-            ),
             Error::EmptySecret => write!(
                 f,
                 "Cannot share an empty secret. Secret cannot have a length of 0"
@@ -739,11 +729,6 @@ impl std::fmt::Display for Error {
                 f,
                 "Need {} writable destinations for shares, only given {}",
                 needed, given
-            ),
-            Error::InvalidNumberOfBytesFromSource(bytes) => write!(
-                f,
-                "Excess trailing bytes, must be divisible by {}. Trailing: {}",
-                8, bytes
             ),
             Error::VerificationFailure(original_hash, calculated_hash) => write!(
                 f,
