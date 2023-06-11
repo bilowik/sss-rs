@@ -72,11 +72,23 @@ pub fn from_secrets(
     Ok(list_of_share_lists)
 }
 
+/// See [reconstruct_secret] for more information
+///
 /// This is a wrapper around [reconstruct_secret] that iterates over each list of shares and
 /// reconstructs their respective byte of the secret.
+///
+/// Assumes each list is of equal length, passing lists with different lengths will result in
+/// undefined behavior. If you need length checks, see [wrapped_sharing::reconstruct]
 pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Vec<u8> {
     let len = share_lists[0].len();
-    (0..len).map(|idx| reconstruct_secret(share_lists.iter().map(|s| s[idx]).collect())).collect()
+    let mut result = Vec::with_capacity(len);
+    for idx in 0..len {
+        result.push(
+            reconstruct_secret(share_lists.iter().map(|s| s[idx]).collect::<Vec<(u8, u8)>>())
+        );
+    }
+    result
+    
 }
 
 /// Wrapper around its corresponding share function but deduplicates the x-value
