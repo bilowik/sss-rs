@@ -135,7 +135,7 @@ pub struct Reconstructor<T: Write> {
 }
 
 impl<T: Write> Reconstructor<T> {
-    pub fn new<U: AsRef<[u8]>>(secret_dest: T, verify: bool) -> Self {
+    pub fn new(secret_dest: T, verify: bool) -> Self {
         let hash_op = if verify {
             add_to_hash
         }
@@ -159,8 +159,8 @@ impl<T: Write> Reconstructor<T> {
             return Err(Error::InconsistentSourceLength(lens));
         }
         (self.update_inner)(self, blocks.iter().map(|b| b.as_ref()).collect::<Vec<&[u8]>>().as_ref())?;
-
-        todo!()
+        Ok(lens[0])
+        
     }
         
     
@@ -753,7 +753,7 @@ fn generate_share_file_paths<T: AsRef<Path>>(dir: T, stem: &str, num_files: u8) 
 mod tests {
     use super::*;
     use rand::seq::SliceRandom;
-    use rand::thread_rng;
+    use rand::{thread_rng, Rng};
 
     #[test]
     fn basic_share_reconstruction() {
@@ -861,6 +861,66 @@ mod tests {
         assert_eq!(secret, recon_secret);
 
     }
+    
+    fn sharer_reconstructor_base<T: AsRef<[u8]> + Copy>(secret_chunks: &[T], shares_required: u8, shares_to_create: u8, verify: bool) {
+        let mut share_dests = (0..shares_to_create).map(|_| Cursor::new(Vec::new())).collect::<Vec<Cursor<Vec<u8>>>>();
+        let secret_chunks = secret_chunks.iter().map(|s| s.as_ref()).collect::<Vec<&[u8]>>();
+        let mut recon_dest = Cursor::new(Vec::new());
+        
+        let mut builder = Sharer::builder()
+            .with_shares_required(shares_required)
+            .with_verify(verify);
+        
 
+        for d in share_dests.iter_mut() {
+            builder = builder.with_output(d);
+        }
+        let mut sharer = builder.build().unwrap();
+        
+        for secret in secret_chunks.iter() {
+            sharer.update(secret).unwrap();
+        }
+        sharer.finalize().unwrap();
+
+        let mut reconstructor = Reconstructor::new(&mut recon_dest, true);
+        reconstructor.update(&share_dests.iter().map(|s| s.get_ref()).collect::<Vec<&Vec<u8>>>()).unwrap();
+        reconstructor.finalize().unwrap();
+        let full_secret = secret_chunks.iter().copied().flatten().copied().collect::<Vec<u8>>();
+        assert_eq!(&full_secret, &recon_dest.into_inner().as_slice());
+
+    }
+
+    #[test]
+    fn sharer_reconstructor_small() {
+        sharer_reconstructor_base(&[b"Hello world"], 2, 2, true);
+    }
+
+    #[test]
+    fn sharer_reconstructor_large() {
+        let secret = [b"Hello World"; 256].iter().copied().flatten().copied().collect::<Vec<u8>>();
+        sharer_reconstructor_base(&[&secret], 2, 2, true);
+    }
+
+    #[test]
+    fn sharer_reconstructor_many_updates() {
+        let secret = [b"Hello World"; 256];
+        sharer_reconstructor_base(&secret, 2, 2, true);
+    }
+
+    #[test]
+    fn sharer_reconstructor_many_updates_many_shares() {
+        let secret = [b"Hello World"; 256];
+        sharer_reconstructor_base(&secret, 3, 5, true);
+    }
+
+    #[test]
+    #[should_panic]
+    fn sharer_reconstructor_bad_shares() {
+        let mut recon_dest = Cursor::new(Vec::new());
+        let rando_shares = (0..2).map(|_| thread_rng().gen::<[u8; 32]>()).collect::<Vec<[u8; 32]>>();
+        let mut reconstructor = Reconstructor::new(&mut recon_dest, true);
+        reconstructor.update(&rando_shares).unwrap();
+        reconstructor.finalize().unwrap();
+    }
 
 }
