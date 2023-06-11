@@ -159,46 +159,10 @@ fn expand_share(share: Vec<u8>) -> Vec<(u8, u8)> {
     share[1..].iter().map(|y| (x_value, *y)).collect()
 }
 
-/// Transposes a Vec of Vecs if it is a valid matrix. If it is not an error is returned.
-///
-/// **matrix:** The matrix to be transposed, must be a valid matrix else an error is returned.
-#[allow(clippy::needless_range_loop)]
-pub fn transpose_vec_matrix<T: Clone>(matrix: Vec<Vec<T>>) -> Result<Vec<Vec<T>>, Error> {
-    for i in 1..matrix.len() {
-        if matrix[i - 1].len() != matrix[i].len() {
-            return Err(Error::InvalidMatrix {
-                index_of_invalid_length_row: i,
-            });
-        }
-    }
-
-    let col_len = matrix.len();
-    let row_len = matrix[0].len();
-
-    let mut transpose: Vec<Vec<T>> = Vec::with_capacity(col_len);
-
-    for _ in 0..matrix[0].len() {
-        transpose.push(Vec::with_capacity(row_len));
-    }
-
-    /*for i in 0..matrix.len() {
-        for j in 0..matrix[i].len() {
-            transpose[j].push(matrix[i][j].clone());
-        }
-    }*/
-    for i in 0..matrix.len() {
-        for j in 0..matrix[i].len() {
-            transpose[j].push(matrix[i][j].clone());
-        }
-    }
-    Ok(transpose)
-}
-
 /// Local Error enum, used to report errors that would only occur within this file.
 #[derive(Debug)]
 pub enum Error {
     NotEnoughShares { given: u8, required: u8 },
-    InvalidMatrix { index_of_invalid_length_row: usize },
     InvalidNumberOfShares(u8),
     UnreconstructableSecret(u8, u8),
     EmptySecretArray,
@@ -211,13 +175,6 @@ impl std::fmt::Display for Error {
                 f,
                 "Not enough shares to recreate secret: Given: {}; Required: {}",
                 given, required
-            ),
-            Error::InvalidMatrix {
-                index_of_invalid_length_row,
-            } => write!(
-                f,
-                "Row {} is not the same length as previous rows",
-                index_of_invalid_length_row
             ),
             Error::EmptySecretArray => write!(f, "Secret array should not be empty"),
             Error::InvalidNumberOfShares(num) => {
@@ -267,20 +224,6 @@ mod tests {
 
         let secret_decrypted = reconstruct_secret(shares);
         assert_eq!(secret, secret_decrypted);
-    }
-
-    #[test]
-    fn transpose() {
-        let matrix = vec![vec![1, 2, 3], vec![4, 5, 6], vec![7, 8, 9]];
-
-        let matrix1 = vec![vec![1, 4, 7], vec![2, 5, 8], vec![3, 6, 9]];
-
-        let matrix2 = vec![vec![1, 2, 3, 4], vec![5, 6, 7, 8]];
-
-        let matrix3 = vec![vec![1, 5], vec![2, 6], vec![3, 7], vec![4, 8]];
-
-        assert_eq!(transpose_vec_matrix(matrix).unwrap(), matrix1);
-        assert_eq!(transpose_vec_matrix(matrix2).unwrap(), matrix3);
     }
 
     #[cfg(feature = "benchmark_tests")]
