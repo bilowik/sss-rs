@@ -64,7 +64,7 @@ pub fn from_secrets<T: AsRef<[u8]>>(
 /// reconstructs their respective byte of the secret.
 ///
 /// Assumes each list is of equal length, passing lists with different lengths will result in
-/// undefined behavior. If you need length checks, see [wrapped_sharing::reconstruct]
+/// undefined behavior. If you need length checks, see [wrapped_sharing::reconstruct][crate::wrapped_sharing::reconstruct]
 pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
     let share_lists = share_lists.as_ref();
     let len = share_lists[0].as_ref().len();
