@@ -3,24 +3,22 @@
 
 An implementation of a secret sharing scheme in Rust. 
 
-**wrapped_sharing** contains wrapper functions that wrap around the functionality in **basic_sharing**, which 
-can include using a hash placed at the end to automatically verify if the secret was properly reconstructed,
-ease of 'compressing' the shares by not requiring an X-value for every Y-value, and sharing/reconstructing to
-and from memory and files interchangeably.
-
-This implementation uses arithmetic over GF(256), shares using **wrapped_sharing** use a 64-byte hash placed
-at the end of the of the secret before sharing that gets shared with it. This way, the 
-reconstruction of the secret can be verified by the hash. This along with a share's corresponding
-X-value, puts each share at [[1-byte X value]] + [[N-byte Secret]] + [[64-byte hash (optional)]]
-
-Notably, given N required shares to reconstruct, and M shares generated, any X number of shares where
+Given N required shares to reconstruct, and M shares generated, any X number of shares where
 N <= X <= M can be used, without the need of specifying how many were required (using more shares however 
-will increase reconstruction time). This goes for both **wrapped_sharing** and **basic_sharing**.
+will increase reconstruction time). 
+
+There are two primary modules, [wrapped_sharing] and [basic_sharing]. [basic_sharing] holds the core secret sharing
+implementation, and [wrapped_sharing] provides convenience wrappers around those implementations as well as the 
+option to verify reconstruction of the secret.
+
+This implementation uses arithmetic over GF(256) for the core secret sharing algorithm. 
 
 
-## Example with the wrapped_sharing API
+
+## Examples
+### 
 ```rust
-use wrapped_sharing::{share, reconstruct};
+use sss_rs::wrapped_sharing::{share, reconstruct};
 let shares_required = 3;
 let shares_to_create = 3;
 let verify = true;
@@ -33,9 +31,7 @@ assert_eq!(secret, recon);
 
 ## Example with the lower-level basic_sharing API
 ```rust
-use basic_sharing::{from_secret, reconstruct_secret};
-// While this just uses a single secret sharing function, there are variants for Vec<u8>
-let mut rand = SmallRng::seed_from_u64(123u64); // Note that rng is optional, default seeds from entropy
+use sss_rs::basic_sharing::{from_secret, reconstruct_secret};
 let secret: u8 = 23; // The secret to be split into shares
 let shares_required = 3; // The number of shares required to reconstruct the secret
 let shares_to_create = 3; // The number of shares to create, can be greater than the required
@@ -44,9 +40,11 @@ let shares: Vec<(u8, u8)> = from_secret(
 		secret,
 		shares_required,
 		shares_to_create,
-		Some(rand)
+        None,
 	).unwrap();
 let secret_recon = reconstruct_secret(shares);
 
 assert_eq!(secret, secret_recon);
 ```
+
+
