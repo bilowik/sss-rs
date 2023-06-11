@@ -211,7 +211,7 @@ impl<T: Write> Reconstructor<T> {
         if let Some(hasher) = self.hasher.as_mut() {
             // verify was enabled, so the last 64 bytes are assumed to be the hash.
             let calculated_hash = hasher.finalize_reset();
-            if &calculated_hash.as_ref() != &self.last_64_bytes {
+            if calculated_hash.as_slice() != &self.last_64_bytes {
                 return Err(Error::VerificationFailure(hex::encode(&calculated_hash), hex::encode(&self.last_64_bytes))); 
             }
         }
@@ -222,7 +222,6 @@ impl<T: Write> Reconstructor<T> {
 
         Ok(())
     }
-
 }
 
 
@@ -390,15 +389,34 @@ pub fn share(
     shares_to_create: u8,
     verify: bool,
 ) -> Result<Vec<Vec<u8>>, Error> {
-    share_from_buf(Cursor::new(secret), shares_required, shares_to_create, verify)
+    // Need to define this out here so it is available outside the below if statement.
+    // We want to avoid doing an extra allocation when verify is false and we also 
+    // want to avoid duplicating any code.
+    let mut secret_and_hash; 
+    let full_secret = if verify {
+        secret_and_hash = Vec::with_capacity(secret.len() + 64);
+        secret_and_hash.extend(secret);
+        let mut hasher = Sha3_512::new();
+        hasher.update(secret);
+        let hash = hasher.finalize();
+        secret_and_hash.extend(hash);
+        &secret_and_hash 
+    }
+    else {
+        secret
+    };
+    Ok(from_secrets_no_points(full_secret, shares_required, shares_to_create, None)?)
 }
 
-// TODO: Optimize me, there is a full copy that's done on all the shares, there must be a way to
-// avoid this.
 /// Creates the shares and places them into a Vec of Vecs. This wraps around
 /// [share_to_writables].
 ///
 /// secret will have rewind() called on it
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Sharer] and [share] which covers this use case far
+/// more gracefully and efficiently.
+#[deprecated(since="0.11.0", note="Use share() or Sharer instead")]
 pub fn share_from_buf<T: Read + Seek>(
     mut secret: T,
     shares_required: u8,
@@ -444,6 +462,11 @@ pub fn share_from_buf<T: Read + Seek>(
 /// **dir:** The directory to output the shares to.
 ///
 /// If **dir** isn't valid, the LAST invalid destination file's error is returned.
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Sharer] and [share] which covers this use case far
+/// more gracefully and efficiently.
+#[deprecated(since="0.11.0", note="Use share() or Sharer instead")]
 pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
     secret: U,
     dir: T,
@@ -477,6 +500,12 @@ pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
 /// **verify**: If true, a hash is assumed to exist at the end of the secret and will be used
 ///             to verify secret reconstruction. NOTE: This will fail if the secret was not
 ///             shared with verify set to true.
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
+/// more gracefully and efficiently.
+#[allow(deprecated)]
+#[deprecated(since="0.11.0", note="Use reconstruct() or Reconstructor instead")]
 pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: T, srcs: &[Vec<u8>], verify: bool) -> Result<(), Error> {
     let src_len = srcs[0].len() as u64;
     let mut srcs = srcs
@@ -489,15 +518,37 @@ pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: T, srcs: &[Vec<u8>], v
 
 /// Reconstructs a secret to a vec
 pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
-    let len = srcs.get(0).ok_or(Error::InvalidNumberOfShares(0))?.len();
-    let mut buf = Cursor::new(Vec::with_capacity(len));
-    let src_len = srcs[0].len() as u64;
-    let mut srcs = srcs
-        .into_iter()
-        .map(|share| Box::new(Cursor::new(share)) as Box<dyn Read>)
-        .collect();
-    reconstruct_from_srcs(&mut buf, &mut srcs, src_len, verify)?;
-    Ok(buf.into_inner())
+    verify_srcs(srcs, verify)?;
+
+    if verify {
+        let reconstruction = reconstruct_secrets_no_points(srcs.to_vec());
+        let reconstructed_secret = reconstruction[0..(reconstruction.len() - 64)].to_vec();
+        let original_hash = &reconstruction[(reconstruction.len() - 64)..];
+        let mut hasher = Sha3_512::new();
+        hasher.update(&reconstructed_secret);
+        let calculated_hash = hasher.finalize();
+        //if &AsRef::<[u8]>::as_ref(&calculated_hash) != &original_hash {
+        if calculated_hash.as_slice() != original_hash {
+            return Err(Error::VerificationFailure(hex::encode(original_hash), hex::encode(&calculated_hash)))
+        }
+        Ok(reconstructed_secret)
+    }
+    else {
+        Ok(reconstruct_secrets_no_points(srcs.to_vec()))
+    }
+}
+
+fn verify_srcs<T: AsRef<[u8]>>(srcs: &[T], verify: bool) -> Result<(), Error> {
+    if verify && (srcs[0].as_ref().len() <= 64) {
+        return Err(Error::NotEnoughBytesInSrc(srcs[0].as_ref().len() as u64));
+    }
+    let lens = srcs.iter().map(|s| s.as_ref().len()).collect::<Vec<usize>>();
+
+    if lens.iter().any(|len| len != &lens[0]) {
+        return Err(Error::InconsistentSourceLength(lens));
+    }
+    Ok(())
+    
 }
 
 
@@ -506,6 +557,11 @@ pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
 /// Will rewind() secrets
 ///
 /// **src_len** MUST be an accurate length of the shares
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
+/// more gracefully and efficiently.
+#[deprecated(since="0.11.0", note="Use reconstruct() or Reconstructor instead")]
 pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     mut secret: T,
     srcs: &mut Vec<Box<dyn Read + 'a>>,
@@ -598,6 +654,12 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
 }
 
 /// Performs the reconstruction of the shares from files with in the given **dir** with the give **stem**
+///
+/// ## Deprecation
+/// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
+/// more gracefully and efficiently.
+#[allow(deprecated)]
+#[deprecated(since="0.11.0", note="Use reconstruct() or Reconstructor instead")]
 pub fn reconstruct_from_files<T: AsRef<Path>, U: Read + Write + Seek>(
     secret: U,
     dir: T,
@@ -882,7 +944,7 @@ mod tests {
         }
         sharer.finalize().unwrap();
 
-        let mut reconstructor = Reconstructor::new(&mut recon_dest, true);
+        let mut reconstructor = Reconstructor::new(&mut recon_dest, verify);
         reconstructor.update(&share_dests.iter().map(|s| s.get_ref()).collect::<Vec<&Vec<u8>>>()).unwrap();
         reconstructor.finalize().unwrap();
         let full_secret = secret_chunks.iter().copied().flatten().copied().collect::<Vec<u8>>();
@@ -911,6 +973,11 @@ mod tests {
     fn sharer_reconstructor_many_updates_many_shares() {
         let secret = [b"Hello World"; 256];
         sharer_reconstructor_base(&secret, 3, 5, true);
+    }
+    #[test]
+    fn sharer_reconstructor_no_verify() {
+        let secret = [b"Hello World"; 256];
+        sharer_reconstructor_base(&secret, 3, 5, false);
     }
 
     #[test]
