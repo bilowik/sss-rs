@@ -443,7 +443,8 @@ pub fn share_to_writables<'a, T: Read + Seek>(
 /// See [from_secrets_compressed][crate::basic_sharing::from_secrets_compressed] for more
 /// information.
 ///
-/// Wraps around from_secrets_compressed with the option to use hash verification.
+/// Wraps around [from_secrets_compressed][crate::basic_sharing::from_secrets_compressed with the 
+/// option to use hash verification.
 pub fn share<T: AsRef<[u8]>>(
     secret: T,
     shares_required: u8,
