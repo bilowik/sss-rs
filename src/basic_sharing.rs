@@ -22,7 +22,7 @@ pub fn from_secret(
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<(u8, u8)>, Error> {
-    Ok(from_secrets_no_points(&[secret], shares_required, shares_to_create, rand)?
+    Ok(from_secrets_compressed(&[secret], shares_required, shares_to_create, rand)?
         .into_iter()
         .map(|v| (v[0], v[1]))
         .collect())
@@ -91,7 +91,7 @@ pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Vec<u8> {
 /// (1-byte X-value),(N-byte share)
 ///
 /// *For additional documentation, see [from_secrets]*
-pub fn from_secrets_no_points(
+pub fn from_secrets_compressed(
     secret: &[u8],
     shares_required: u8,
     shares_to_create: u8,
@@ -139,16 +139,16 @@ pub fn from_secrets_no_points(
     Ok(shares_list)
 }
 
-/// Wrapper around its [reconstruct_secrets], accepts shares created by [from_secrets_no_points]
+/// Wrapper around its [reconstruct_secrets], accepts shares created by [from_secrets_compressed]
 /// function to reconstruct the secret from shares created using
-/// [from_secrets_no_points]
+/// [from_secrets_compressed]
 ///
 /// The format the shares are to be in are as follows:
 ///
 /// (1-byte X-value),(N-byte share)
 ///
 /// See [reconstruct_secrets] for more documentation.
-pub fn reconstruct_secrets_no_points(share_lists: Vec<Vec<u8>>) -> Vec<u8> {
+pub fn reconstruct_secrets_compressed(share_lists: Vec<Vec<u8>>) -> Vec<u8> {
     reconstruct_secrets(share_lists.into_iter().map(expand_share).collect())
 
 }
@@ -255,11 +255,11 @@ mod tests {
     }
 
     #[test]
-    fn no_points() {
+    fn compressed() {
         let secret = vec![10, 20, 30, 40, 50];
         let n = 3;
-        let shares = from_secrets_no_points(&secret, n, n, None).unwrap();
-        let recon = reconstruct_secrets_no_points(shares);
+        let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
+        let recon = reconstruct_secrets_compressed(shares);
         assert_eq!(secret, recon);
     }
 }

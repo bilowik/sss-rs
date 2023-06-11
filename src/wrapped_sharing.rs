@@ -1,4 +1,4 @@
-use crate::basic_sharing::{from_secrets, reconstruct_secrets, from_secrets_no_points, reconstruct_secrets_no_points};
+use crate::basic_sharing::{from_secrets, reconstruct_secrets, from_secrets_compressed, reconstruct_secrets_compressed};
 use sha3::{Digest, Sha3_512};
 use std::convert::TryFrom;
 use std::fs::File;
@@ -62,7 +62,7 @@ impl<'a> Sharer<'a> {
         let bytes_shared = bytes.len();
         (self.hash_op)(&mut self.hasher, bytes);
 
-        for (share_list, output) in from_secrets_no_points(
+        for (share_list, output) in from_secrets_compressed(
             data.as_ref(),
             self.shares_required,
             self.get_shares_to_create(),
@@ -175,7 +175,7 @@ impl<T: Write> Reconstructor<T> {
                 self.x_vals.as_ref().unwrap().iter())
             .map(|(block, x_val)| std::iter::once(*x_val).chain(block.iter().copied()).collect::<Vec<u8>>()).collect::<Vec<Vec<u8>>>();
 
-        let recon_chunk = reconstruct_secrets_no_points(expanded_blocks);
+        let recon_chunk = reconstruct_secrets_compressed(expanded_blocks);
 
         // Split the recon_chunk into slices of [ X bytes ],[64 bytes]. The last 64 bytes
         // are stored and written in the next call to update, or during finalize when 
@@ -378,7 +378,10 @@ pub fn share_to_writables<'a, T: Read + Seek>(
     Ok(())
 }
 
-
+/// See [from_secrets_compressed][crate::basic_sharing::from_secrets_compressed] for more
+/// information.
+///
+/// Wraps around from_secrets_compressed with the option to use hash verification.
 pub fn share(
     secret: &[u8],
     shares_required: u8,
@@ -401,7 +404,7 @@ pub fn share(
     else {
         secret
     };
-    Ok(from_secrets_no_points(full_secret, shares_required, shares_to_create, None)?)
+    Ok(from_secrets_compressed(full_secret, shares_required, shares_to_create, None)?)
 }
 
 /// Creates the shares and places them into a Vec of Vecs. This wraps around
@@ -517,7 +520,7 @@ pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
     verify_srcs(srcs, verify)?;
 
     if verify {
-        let reconstruction = reconstruct_secrets_no_points(srcs.to_vec());
+        let reconstruction = reconstruct_secrets_compressed(srcs.to_vec());
         let reconstructed_secret = reconstruction[0..(reconstruction.len() - 64)].to_vec();
         let original_hash = &reconstruction[(reconstruction.len() - 64)..];
         let mut hasher = Sha3_512::new();
@@ -530,7 +533,7 @@ pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
         Ok(reconstructed_secret)
     }
     else {
-        Ok(reconstruct_secrets_no_points(srcs.to_vec()))
+        Ok(reconstruct_secrets_compressed(srcs.to_vec()))
     }
 }
 
