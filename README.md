@@ -114,18 +114,18 @@ Also very similar to the above example but will dedup the x-value of each share 
 at the beginning of each list of shares. All functionality in [wrapped_sharing] utilizes this.
 There is an explanation below that describes how and why this works in more detail.
 ```rust
-use sss_rs::basic_sharing::{from_secrets_no_points, reconstruct_secrets_no_points};
+use sss_rs::basic_sharing::{from_secrets_compressed, reconstruct_secrets_compressed};
 let secret = b"Hello world"; // The secret to be split into shares
 let shares_required = 3; // The number of shares required to reconstruct the secret
 let shares_to_create = 3; // The number of shares to create, can be greater than the required
 
-let shares: Vec<Vec<u8>> = from_secrets_no_points(
+let shares: Vec<Vec<u8>> = from_secrets_compressed(
 		secret,
 		shares_required,
 		shares_to_create,
         None,
 	).unwrap();
-let secret_recon = reconstruct_secrets_no_points(shares);
+let secret_recon = reconstruct_secrets_compressed(shares);
 
 assert_eq!(secret, secret_recon.as_slice());
 ```
