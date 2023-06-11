@@ -52,29 +52,10 @@ pub fn from_secrets<T: AsRef<[u8]>>(
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
-    let secret = secret.as_ref();
-    if secret.is_empty() {
-        return Err(Error::EmptySecretArray);
-    }
-
-    // If rand is None, create a new rand and return it's reference
-    let mut from_entropy: Box<dyn RngCore>;
-    let mut rand = match rand {
-        Some(rng) => rng,
-        None => {
-            from_entropy = Box::new(StdRng::from_entropy());
-            &mut from_entropy
-        }
-    };
-
-    let mut list_of_share_lists: Vec<Vec<(u8, u8)>> = (0..shares_to_create).map(|_| Vec::with_capacity(secret.len())).collect();
-
-    for s in secret {
-        for (idx, share) in from_secret(*s, shares_required, shares_to_create, Some(&mut rand))?.into_iter().enumerate() {
-            list_of_share_lists[idx].push(share);
-        }
-    }
-    Ok(list_of_share_lists)
+    Ok(from_secrets_compressed(secret, shares_required, shares_to_create, rand)?
+        .into_iter()
+        .map(expand_share)
+        .collect())
 }
 
 /// See [reconstruct_secret] for more information
@@ -169,11 +150,11 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
 /// See [reconstruct_secrets] for more documentation.
 pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
     let share_lists = share_lists.as_ref();
-    reconstruct_secrets(share_lists.into_iter().map(expand_share).collect::<Vec<Box<[(u8, u8)]>>>())
+    reconstruct_secrets(share_lists.into_iter().map(expand_share).collect::<Vec<Vec<(u8, u8)>>>())
 }
 
 
-fn expand_share<T: AsRef<[u8]>>(share: T) -> Box<[(u8, u8)]> {
+fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
     let share = share.as_ref();
     let x_value = share[0];
     share[1..].iter().map(|y| (x_value, *y)).collect()
