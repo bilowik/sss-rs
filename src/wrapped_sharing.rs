@@ -1,3 +1,11 @@
+//! Abstractions and wrappers around the core implementation of sharing/reconstructing.
+//!
+//! For in-memory or small files, [share] and [reconstruct] are suitable. For large files or
+//! byte streams, [Sharer] and [Reconstructor] are better suited since they share/reconstruct in
+//! chunks.
+//!
+//! For implementing custom wrappers or abstractions, [basic_sharing][crate::basic_sharing]
+//! functions can be utilized.
 use crate::basic_sharing::{from_secrets, reconstruct_secrets, from_secrets_compressed, reconstruct_secrets_compressed};
 use sha3::{Digest, Sha3_512};
 use std::convert::TryFrom;
