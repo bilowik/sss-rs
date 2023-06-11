@@ -6,7 +6,7 @@ use std::io::{Cursor, Read, Write, Seek, SeekFrom};
 use std::path::Path;
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
-pub const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
+const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
 
 pub struct Sharer<'a> {
     share_outputs: Vec<Box<dyn Write + 'a>>,
