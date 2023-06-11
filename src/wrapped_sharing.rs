@@ -578,11 +578,11 @@ pub fn reconstruct_to_buf<T: Read + Write + Seek>(secret: T, srcs: &[Vec<u8>], v
 
 
 /// Reconstructs a secret to a vec
-pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
-    verify_srcs(srcs, verify)?;
+pub fn reconstruct<U: AsRef<[u8]>, T: AsRef<[U]>>(srcs: T, verify: bool) -> Result<Vec<u8>, Error> {
+    verify_srcs(srcs.as_ref(), verify)?;
 
     if verify {
-        let reconstruction = reconstruct_secrets_compressed(srcs.to_vec());
+        let reconstruction = reconstruct_secrets_compressed(srcs);
         let reconstructed_secret = reconstruction[0..(reconstruction.len() - 64)].to_vec();
         let original_hash = &reconstruction[(reconstruction.len() - 64)..];
         let mut hasher = Sha3_512::new();
@@ -595,7 +595,7 @@ pub fn reconstruct(srcs: &[Vec<u8>], verify: bool) -> Result<Vec<u8>, Error> {
         Ok(reconstructed_secret)
     }
     else {
-        Ok(reconstruct_secrets_compressed(srcs.to_vec()))
+        Ok(reconstruct_secrets_compressed(srcs))
     }
 }
 
