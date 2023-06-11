@@ -5,7 +5,7 @@
 //! chunks.
 //!
 //! For implementing custom wrappers or abstractions, [basic_sharing][crate::basic_sharing]
-//! functions can be utilized.
+//! functions can be utilized if finer-tuned control is needed.
 use crate::basic_sharing::{from_secrets, reconstruct_secrets, from_secrets_compressed, reconstruct_secrets_compressed};
 use sha3::{Digest, Sha3_512};
 use std::convert::TryFrom;
