@@ -1,6 +1,6 @@
-//! Contains the core implementation of the library, in most cases [wrapped_sharing][crate::wrapped_sharing] 
+//! Contains the core implementation of the library, in most cases [wrapped_sharing][crate::wrapped_sharing]
 //! should be utilized, otherwise these functions are useful for implementing a custom abstraction/wrapper.
-use crate::geometry::{GaloisPolynomial, Coeff};
+use crate::geometry::{Coeff, GaloisPolynomial};
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
 
@@ -28,16 +28,18 @@ pub fn from_secret(
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<(u8, u8)>, Error> {
-    Ok(from_secrets_compressed(&[secret], shares_required, shares_to_create, rand)?
-        .into_iter()
-        .map(|v| (v[0], v[1]))
-        .collect())
+    Ok(
+        from_secrets_compressed(&[secret], shares_required, shares_to_create, rand)?
+            .into_iter()
+            .map(|v| (v[0], v[1]))
+            .collect(),
+    )
 }
 
 /// Reconstructs a secret from a given Vector of shares (points) and returns that secret.
 ///
 /// No guarantees are made that the shares are valid together and that the secret is valid.
-/// If there are enough shares, reconstruction will succeed. 
+/// If there are enough shares, reconstruction will succeed.
 pub fn reconstruct_secret<T: AsRef<[(u8, u8)]>>(shares: T) -> u8 {
     GaloisPolynomial::get_y_intercept_from_points(shares.as_ref())
 }
@@ -54,10 +56,12 @@ pub fn from_secrets<T: AsRef<[u8]>>(
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
-    Ok(from_secrets_compressed(secret, shares_required, shares_to_create, rand)?
-        .into_iter()
-        .map(expand_share)
-        .collect())
+    Ok(
+        from_secrets_compressed(secret, shares_required, shares_to_create, rand)?
+            .into_iter()
+            .map(expand_share)
+            .collect(),
+    )
 }
 
 /// See [reconstruct_secret] for more information
@@ -72,12 +76,14 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]>, T: AsRef<[U]>>(share_lists: T) 
     let len = share_lists[0].as_ref().len();
     let mut result = Vec::with_capacity(len);
     for idx in 0..len {
-        result.push(
-            reconstruct_secret(share_lists.iter().map(|s| s.as_ref()[idx]).collect::<Vec<(u8, u8)>>())
-        );
+        result.push(reconstruct_secret(
+            share_lists
+                .iter()
+                .map(|s| s.as_ref()[idx])
+                .collect::<Vec<(u8, u8)>>(),
+        ));
     }
     result
-    
 }
 
 /// Wrapper around its corresponding share function but deduplicates the x-value
@@ -111,28 +117,32 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
     }
 
     let mut rng: Box<dyn RngCore> = match rand {
-        Some(rng) => Box::new(rng), 
-        None => Box::new(StdRng::from_entropy()), 
+        Some(rng) => Box::new(rng),
+        None => Box::new(StdRng::from_entropy()),
     };
 
     // Create the vecs
-    let mut shares_list = (0..shares_to_create).map(|_| Vec::with_capacity(secret.len() + 1))
+    let mut shares_list = (0..shares_to_create)
+        .map(|_| Vec::with_capacity(secret.len() + 1))
         .enumerate()
         .map(|(i, mut v)| {
             v.push((i + 1) as u8); // This is the x coefficent of each share.
             v
         })
-    .collect::<Vec<Vec<u8>>>();
-    
-    let polys = secret.iter().map(|s| {
-        let mut share_poly = GaloisPolynomial::new();
-        share_poly.set_coeff(Coeff(*s), 0);
-        for i in 1..shares_required {
-            let curr_co = rng.gen_range(2..255);
-            share_poly.set_coeff(Coeff(curr_co), i as usize);
-        }
-        share_poly
-    }).collect::<Vec<GaloisPolynomial>>();
+        .collect::<Vec<Vec<u8>>>();
+
+    let polys = secret
+        .iter()
+        .map(|s| {
+            let mut share_poly = GaloisPolynomial::new();
+            share_poly.set_coeff(Coeff(*s), 0);
+            for i in 1..shares_required {
+                let curr_co = rng.gen_range(2..255);
+                share_poly.set_coeff(Coeff(curr_co), i as usize);
+            }
+            share_poly
+        })
+        .collect::<Vec<GaloisPolynomial>>();
     for x in 0..shares_to_create {
         for poly in polys.iter() {
             shares_list[x as usize].push(poly.get_y_value(x + 1));
@@ -152,9 +162,13 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
 /// See [reconstruct_secrets] for more documentation.
 pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
     let share_lists = share_lists.as_ref();
-    reconstruct_secrets(share_lists.into_iter().map(expand_share).collect::<Vec<Vec<(u8, u8)>>>())
+    reconstruct_secrets(
+        share_lists
+            .into_iter()
+            .map(expand_share)
+            .collect::<Vec<Vec<(u8, u8)>>>(),
+    )
 }
-
 
 fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
     let share = share.as_ref();
@@ -166,11 +180,11 @@ fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
 pub enum Error {
     /// shares_required was < 2
     InvalidNumberOfShares(u8),
-    
+
     /// shares_required was > share_to_create
     UnreconstructableSecret(u8, u8),
 
-    /// The given secret was empty 
+    /// The given secret was empty
     EmptySecretArray,
 }
 
