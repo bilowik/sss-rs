@@ -4,6 +4,9 @@ use rand::{Rng, RngCore, SeedableRng};
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data.
 ///
+/// In a majority of cases if you are sharing more than a single byte, use [from_secrets] or
+/// [from_secrets_compressed] for much greater efficiency.
+///
 /// ## Args
 /// **secret:** The secret value that is to be split into shares
 ///
@@ -16,6 +19,7 @@ use rand::{Rng, RngCore, SeedableRng};
 /// The default is StdRng::from_entropy()
 ///
 /// **NOTE: Using predictable RNG can be a security risk. If unsure, use None.**
+///
 pub fn from_secret(
     secret: u8,
     shares_required: u8,
@@ -32,8 +36,8 @@ pub fn from_secret(
 ///
 /// No guarantees are made that the shares are valid together and that the secret is valid.
 /// If there are enough shares, reconstruction will succeed. 
-pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
-    GaloisPolynomial::get_y_intercept_from_points(shares.as_slice())
+pub fn reconstruct_secret<T: AsRef<[(u8, u8)]>>(shares: T) -> u8 {
+    GaloisPolynomial::get_y_intercept_from_points(shares.as_ref())
 }
 
 /// This is a wrapper around [from_secret] and performs the same operation
@@ -42,12 +46,13 @@ pub fn reconstruct_secret(shares: Vec<(u8, u8)>) -> u8 {
 /// For additional documentation, see [from_secret]
 ///
 /// **NOTE: Using predictable RNG can be a security risk. If unsure, use None.**
-pub fn from_secrets(
-    secret: &[u8],
+pub fn from_secrets<T: AsRef<[u8]>>(
+    secret: T,
     shares_required: u8,
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
+    let secret = secret.as_ref();
     if secret.is_empty() {
         return Err(Error::EmptySecretArray);
     }
@@ -79,12 +84,13 @@ pub fn from_secrets(
 ///
 /// Assumes each list is of equal length, passing lists with different lengths will result in
 /// undefined behavior. If you need length checks, see [wrapped_sharing::reconstruct]
-pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Vec<u8> {
-    let len = share_lists[0].len();
+pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
+    let share_lists = share_lists.as_ref();
+    let len = share_lists[0].as_ref().len();
     let mut result = Vec::with_capacity(len);
     for idx in 0..len {
         result.push(
-            reconstruct_secret(share_lists.iter().map(|s| s[idx]).collect::<Vec<(u8, u8)>>())
+            reconstruct_secret(share_lists.iter().map(|s| s.as_ref()[idx]).collect::<Vec<(u8, u8)>>())
         );
     }
     result
@@ -103,12 +109,13 @@ pub fn reconstruct_secrets(share_lists: Vec<Vec<(u8, u8)>>) -> Vec<u8> {
 /// (1-byte X-value),(N-byte share)
 ///
 /// *For additional documentation, see [from_secrets]*
-pub fn from_secrets_compressed(
-    secret: &[u8],
+pub fn from_secrets_compressed<T: AsRef<[u8]>>(
+    secret: T,
     shares_required: u8,
     shares_to_create: u8,
     rand: Option<&mut dyn RngCore>,
 ) -> Result<Vec<Vec<u8>>, Error> {
+    let secret = secret.as_ref();
     if shares_required > shares_to_create {
         return Err(Error::UnreconstructableSecret(
             shares_to_create,
@@ -160,13 +167,14 @@ pub fn from_secrets_compressed(
 /// (1-byte X-value),(N-byte share)
 ///
 /// See [reconstruct_secrets] for more documentation.
-pub fn reconstruct_secrets_compressed(share_lists: Vec<Vec<u8>>) -> Vec<u8> {
-    reconstruct_secrets(share_lists.into_iter().map(expand_share).collect())
-
+pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
+    let share_lists = share_lists.as_ref();
+    reconstruct_secrets(share_lists.into_iter().map(expand_share).collect::<Vec<Box<[(u8, u8)]>>>())
 }
 
 
-fn expand_share(share: Vec<u8>) -> Vec<(u8, u8)> {
+fn expand_share<T: AsRef<[u8]>>(share: T) -> Box<[(u8, u8)]> {
+    let share = share.as_ref();
     let x_value = share[0];
     share[1..].iter().map(|y| (x_value, *y)).collect()
 }
@@ -236,34 +244,6 @@ mod tests {
 
         let secret_decrypted = reconstruct_secret(shares);
         assert_eq!(secret, secret_decrypted);
-    }
-
-    #[cfg(feature = "benchmark_tests")]
-    #[test]
-    fn large_data_and_benchmark() {
-        use std::time::Instant;
-
-        let secret = "According to all known laws of aviation, 
-            there is no way a bee should be able to fly.
-            Its wings are too small to get its fat little body off the ground.
-            The bee, of course, flies anyway
-            because bees don't care what humans think is impossible.";
-        let shares_required = 5;
-        let shares_to_create = 5;
-
-        let now = Instant::now();
-
-        let share_lists =
-            from_secrets(secret.as_bytes(), shares_required, shares_to_create).unwrap();
-
-        let recon_secret_vec = reconstruct_secrets(share_lists).unwrap();
-        let recon_secret = String::from_utf8(recon_secret_vec).unwrap();
-
-        let time_elap = now.elapsed().as_millis();
-
-        println!("Time elapsed: {} milliseconds", time_elap);
-
-        assert_eq!(secret, &recon_secret[..])
     }
 
     #[test]
