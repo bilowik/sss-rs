@@ -104,7 +104,8 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + S
                 ));
         }
     };
-
+    
+    #[cfg(feature = "rayon")]
     if len < PAR_CUTOFF_RECON {
         // This is the cutoff point where parallelization overhead exceeds the performance gain
         // from the paralleization.
@@ -112,6 +113,8 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + S
     } else {
         (0..len).into_par_iter().for_each(recon_iter);
     }
+    #[cfg(not(feature = "rayon"))]
+    (0..len).for_each(recon_iter);
 
     result
 }
@@ -199,12 +202,18 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
             }
         }
     };
+
+    #[cfg(feature = "rayon")]
     if secret.len() < PAR_CUTOFF_SHARING { 
         secret.iter().enumerate().for_each(share_iter);
     }
     else {
         secret.par_iter().enumerate().for_each(share_iter);
     }
+    #[cfg(not(feature = "rayon"))]
+    secret.iter().enumerate().for_each(share_iter);
+    
+
     Ok(shares_list)
 }
 
