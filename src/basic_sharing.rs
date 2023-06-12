@@ -6,8 +6,8 @@ use rand::{Rng, RngCore, SeedableRng};
 use rayon::prelude::*;
 use std::mem::transmute;
 
-const PAR_CUTOFF_SHARING: usize = 1280;
-const PAR_CUTOFF_RECON: usize = 1024;
+const PAR_CUTOFF_SHARING: usize = 4096;
+const PAR_CUTOFF_RECON: usize = 4096;
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data.
 ///
