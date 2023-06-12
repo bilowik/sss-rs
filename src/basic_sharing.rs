@@ -6,6 +6,9 @@ use rand::{Rng, RngCore, SeedableRng};
 use rayon::prelude::*;
 use std::mem::transmute;
 
+const PAR_CUTOFF_SHARING: usize = 1280;
+const PAR_CUTOFF_RECON: usize = 1024;
+
 /// Creates a vector of points that serve as the list of shares for a given byte of data.
 ///
 /// In a majority of cases if you are sharing more than a single byte, use [from_secrets] or
@@ -102,7 +105,7 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + S
         }
     };
 
-    if len < 1024 {
+    if len < PAR_CUTOFF_RECON {
         // This is the cutoff point where parallelization overhead exceeds the performance gain
         // from the paralleization.
         (0..len).for_each(recon_iter);
@@ -176,7 +179,9 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
     // Need to send the ptr between threads which is safe here since we guarantee
     // that no two threads will read nor write to the same index.
     let shares_list_ptr: isize = unsafe { transmute(shares_list.as_mut_ptr()) };
-    secret.par_iter().enumerate().for_each(|(idx, s)| {
+    
+
+    let share_iter = |(idx, s): (usize, &u8)| {
         let mut share_poly = GaloisPolynomial::new();
         share_poly.set_coeff(Coeff(*s), 0);
         for i in 1..(shares_required as usize) {
@@ -193,7 +198,13 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
                     .unwrap()[idx + 1] = share_poly.get_y_value(x + 1);
             }
         }
-    });
+    };
+    if secret.len() < PAR_CUTOFF_SHARING { 
+        secret.iter().enumerate().for_each(share_iter);
+    }
+    else {
+        secret.par_iter().enumerate().for_each(share_iter);
+    }
     Ok(shares_list)
 }
 
