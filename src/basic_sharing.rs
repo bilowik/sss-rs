@@ -3,10 +3,15 @@
 use crate::geometry::{Coeff, GaloisPolynomial};
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
+
 use std::mem::transmute;
 
+#[cfg(feature = "rayon")]
 const PAR_CUTOFF_SHARING: usize = 4096;
+
+#[cfg(feature = "rayon")]
 const PAR_CUTOFF_RECON: usize = 4096;
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data.
