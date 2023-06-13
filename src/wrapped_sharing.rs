@@ -155,6 +155,12 @@ impl<'a> SharerBuilder<'a> {
             .push(Box::new(output) as Box<dyn Write + 'a>);
         self
     }
+    
+    /// Appends the given outputs to the current list of outputs
+    pub fn with_outputs<T: Write + 'a, I: IntoIterator<Item = T>>(mut self, outputs: I) -> Self {
+        self.share_outputs.extend(outputs.into_iter().map(|v| Box::new(v) as Box<dyn Write + 'a>));
+        self
+    }
 
     /// Will calculate a hash of the secret and append it at the end, sharing it
     /// along with the secret, allowing for verification of valid reconstruction.
