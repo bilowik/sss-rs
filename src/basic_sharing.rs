@@ -3,6 +3,16 @@
 use crate::geometry::{Coeff, GaloisPolynomial};
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
+use std::mem::transmute;
+
+#[cfg(feature = "rayon")]
+const PAR_CUTOFF_SHARING: usize = 4096;
+
+#[cfg(feature = "rayon")]
+const PAR_CUTOFF_RECON: usize = 4096;
 
 /// Creates a vector of points that serve as the list of shares for a given byte of data.
 ///
@@ -71,18 +81,46 @@ pub fn from_secrets<T: AsRef<[u8]>>(
 ///
 /// Assumes each list is of equal length, passing lists with different lengths will result in
 /// undefined behavior. If you need length checks, see [wrapped_sharing::reconstruct][crate::wrapped_sharing::reconstruct]
-pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
+pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + Sync + Send>(
+    share_lists: T,
+) -> Vec<u8> {
     let share_lists = share_lists.as_ref();
     let len = share_lists[0].as_ref().len();
     let mut result = Vec::with_capacity(len);
-    for idx in 0..len {
-        result.push(reconstruct_secret(
-            share_lists
-                .iter()
-                .map(|s| s.as_ref()[idx])
-                .collect::<Vec<(u8, u8)>>(),
-        ));
+    unsafe {
+        // Safe bc we are guaranteed to write over every byte.
+        result.set_len(len);
     }
+
+    // Shhhhh pretend you didn't see this. (Safe bc it's just a ptr <--> isize conversion.)
+    let result_ptr: isize = unsafe { transmute(result.as_mut_ptr()) };
+
+    let recon_iter = |idx: usize| {
+        unsafe {
+            // SHHHHHHHHHH it's okay I PROMISE.
+            // (Safe bc it is guaranteed that no thread will write to the same address.)
+            transmute::<isize, *mut u8>(result_ptr)
+                .add(idx)
+                .write(reconstruct_secret(
+                    share_lists
+                        .iter()
+                        .map(|s| s.as_ref()[idx])
+                        .collect::<Vec<(u8, u8)>>(),
+                ));
+        }
+    };
+    
+    #[cfg(feature = "rayon")]
+    if len < PAR_CUTOFF_RECON {
+        // This is the cutoff point where parallelization overhead exceeds the performance gain
+        // from the paralleization.
+        (0..len).for_each(recon_iter);
+    } else {
+        (0..len).into_par_iter().for_each(recon_iter);
+    }
+    #[cfg(not(feature = "rayon"))]
+    (0..len).for_each(recon_iter);
+
     result
 }
 
@@ -121,26 +159,66 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
         None => Box::new(StdRng::from_entropy()),
     };
 
-    // Create the vecs
+    // Pre-generate the coefficients together so we can avoid sending dyn RngCore between threads.
+    // This is probably more efficient than the (secret.len() * shares_to_create) calls to rng.gen().
+    let mut coeffs: Vec<u8> = Vec::with_capacity(secret.len() * shares_to_create as usize);
+
+    // This is safe bc rng.fill() will write to every index and we are setting the len to the
+    // exact capacity we set prior.
+    //
+    // This is more efficient than doing secret.len() * shares_to_create loops of
+    // rng.gen().
+    unsafe { coeffs.set_len(secret.len() * shares_to_create as usize) };
+    rng.fill(coeffs.as_mut_slice());
+
+    // Create the vecs for each share.
     let mut shares_list = (0..shares_to_create)
         .map(|_| Vec::with_capacity(secret.len() + 1))
         .enumerate()
         .map(|(i, mut v)| {
-            v.push((i + 1) as u8); // This is the x coefficent of each share.
+            // This is safe bc we are guaranteed to write to every index and the len we are
+            // setting is the exact capacity we just set prior.
+            unsafe { v.set_len(secret.len() + 1) };
+            v[0] = (i as u8) + 1; // This is the x coefficient of each share
             v
         })
         .collect::<Vec<Vec<u8>>>();
-    for s in secret {
+
+    // Need to send the ptr between threads which is safe here since we guarantee
+    // that no two threads will read nor write to the same index.
+    let shares_list_ptr: isize = unsafe { transmute(shares_list.as_mut_ptr()) };
+    
+
+    let share_iter = |(idx, s): (usize, &u8)| {
         let mut share_poly = GaloisPolynomial::new();
         share_poly.set_coeff(Coeff(*s), 0);
-        for i in 1..shares_required {
-            let curr_co = rng.gen_range(2..255);
-            share_poly.set_coeff(Coeff(curr_co), i as usize);
+        for i in 1..(shares_required as usize) {
+            let curr_co = coeffs[(idx * i) + i];
+            share_poly.set_coeff(Coeff(curr_co), i);
         }
         for x in 0..shares_to_create {
-            shares_list[x as usize].push(share_poly.get_y_value(x + 1))    
+            // The following is safe bc we guarantee that no two threads will read nor write
+            // to the same index.
+            unsafe {
+                transmute::<isize, *mut Vec<u8>>(shares_list_ptr)
+                    .add(x as usize)
+                    .as_mut()
+                    .unwrap()[idx + 1] = share_poly.get_y_value(x + 1);
+            }
         }
+    };
+
+    #[cfg(feature = "rayon")]
+    if secret.len() < PAR_CUTOFF_SHARING { 
+        secret.iter().enumerate().for_each(share_iter);
     }
+    else {
+        secret.par_iter().enumerate().for_each(share_iter);
+    }
+    #[cfg(not(feature = "rayon"))]
+    secret.iter().enumerate().for_each(share_iter);
+    
+
     Ok(shares_list)
 }
 
@@ -155,17 +233,12 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
 /// See [reconstruct_secrets] for more documentation.
 pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
     let share_lists = share_lists.as_ref();
-    let len = share_lists[0].as_ref().len();
-    let mut result = Vec::with_capacity(len);
-    for idx in 1..len {
-        result.push(reconstruct_secret(
-            share_lists
-                .iter()
-                .map(|s| (s.as_ref()[0], s.as_ref()[idx]))
-                .collect::<Vec<(u8, u8)>>(),
-        ));
-    }
-    result
+    reconstruct_secrets(
+        share_lists
+            .into_iter()
+            .map(expand_share)
+            .collect::<Vec<Vec<(u8, u8)>>>(),
+    )
 }
 
 fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
