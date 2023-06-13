@@ -152,9 +152,10 @@ When we share a slice of bytes, we get lists of shares like this:
 (x1S, y1S), (x2S, y2S), (x3S, y3S), ... (xMS, yMS)
 ```
 
-Each of the above lists of points corresponds to 1 byte of the secret. These cannot be distrubted this way, since 
-each share corresponds to one byte, rather than one piece of the whole secret. So, we transpose this, so every list has
-exactly one share for every byte.
+Each of the above list of points corresponds to just 1 byte of the secret. For example, any N points from 
+the first list will reconstruct the first byte of the secret. 
+These cannot be distrubted this way, since each share corresponds to one byte, rather than one piece 
+of the whole secret. So, we transpose this, so every list has one piece of every byte of the secret.
 
 ```notrust
 (x1a, y1a), (x1b, y1b), (x1c, y1c), ... (x1S, y1S)
@@ -164,7 +165,9 @@ exactly one share for every byte.
 (xMa, yMa), (xMb, yMb), (xMc, yMc), ... (xMS, yMS)
 ```
 
-Now when taking just N points from any given list, reconstructs the byte in that index.
+Now with a given index, the byte of the secret at that index can be reconstructed from at least N shares. For example,
+to reconstruct the 3rd byte of the secret, you need the third point from at least N shares to reconstruct. Now everyone has
+a list of points where each point corresponds to just 1 byte of the original secret. These can now be distributed.
 
 Moving onto the compression, the x values can be predictable without a significant impact to the security of the shares.
 This is what the list of shares prior to transposition look like with predictable x-values.
@@ -176,12 +179,12 @@ This is what the list of shares prior to transposition look like with predictabl
 ...
 (1, y1S), (2, y2S), (3, y3S), ... (M, yMS)
 
-And when we transpose this to make the shares usable:
+And when we transposed for the reasons stated prior to make these shares distributable:
 
 ```notrust
 (1, y1a), (1, y1b), (1, y1c), ... (1, y1S)
 (2, y2a), (2, y2b), (2, y2c), ... (2, y2S)
-(3, y3a), (2, y2b), (3, y3c), ... (3, y3S)
+(3, y3a), (3, y3b), (3, y3c), ... (3, y3S)
 ...
 (M, yMa), (M, yMb), (M, yMc), ... (M, yMS)
 ```
@@ -192,7 +195,7 @@ have one copy of it at the beginning of each share.
 ```notrust
 1, y1a, y1b, y1c, ... y1S
 2, y2a, y2b, y2c, ... y2S
-3, y3a, y2b, y3c, ... y3S
+3, y3a, y3b, y3c, ... y3S
 ...
 M, yMa, yMb, yMc, ... yMS
 ```
