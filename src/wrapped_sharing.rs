@@ -68,6 +68,13 @@ impl<'a> Sharer<'a> {
         shares_required: u8,
         verify: bool,
     ) -> Result<Self, Error> {
+        if (share_outputs.len() < 2) || (share_outputs.len() < (shares_required as usize)) {
+            return Err(Error::NotEnoughShareOutputs(share_outputs.len(), shares_required));
+        }
+        if share_outputs.len() > 255 {
+            // This exceeds the number of shares we can create.
+            return Err(Error::TooManyShareOutputs(share_outputs.len()));
+        }
         let hash_op = if verify { add_to_hash } else { noop_hash };
 
         // Write out the coefficient for each share
@@ -862,6 +869,13 @@ pub enum Error {
 
     /// During reconstruction, the given source chunks did not have equal lengths.
     InconsistentSourceLength(Vec<usize>),
+    
+    /// Occurs when < 2 share outputs are given or number of share outputs is less than the shares
+    /// required.
+    NotEnoughShareOutputs(usize, u8), 
+
+    /// Occurs when > 255 share outputs are given when constructing a Sharer
+    TooManyShareOutputs(usize),
 }
 
 impl From<crate::basic_sharing::Error> for Error {
@@ -917,6 +931,12 @@ Calculated Hash: {}",
             }
             Error::InconsistentSourceLength(lens) => {
                 write!(f, "The given chunks have differing lengths: {:?}", lens,)
+            }
+            Error::NotEnoughShareOutputs(given, required) => {
+                write!(f, "Need {} share outputs, only {} given. Must be > 2 and >= shares required", given, required)
+            }
+            Error::TooManyShareOutputs(len) => {
+                write!(f, "Cannot generate {} shares, max is 255", len)
             }
         }
     }
@@ -1128,5 +1148,11 @@ mod tests {
         let mut reconstructor = Reconstructor::new(&mut recon_dest, true);
         reconstructor.update(&rando_shares).unwrap();
         reconstructor.finalize().unwrap();
+    }
+
+    #[test]
+    fn sharer_empty() {
+        assert!(Sharer::builder().build().is_err());
+
     }
 }
