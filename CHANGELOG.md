@@ -1,3 +1,32 @@
+## sss-rs 0.11.0 06/12/2023
+A lot of cleanup, a lot of optimizations on all fronts. Most breaking changes occur in just `wrapped_sharing`, `basic_sharing` is relatively untouched in terms of API aside from added generics that should accept all previous usages aside from two function renames.
+
+### General
+- Removed a lot of old code that was no longer in use, including a lot of the `geometry` module from back before the migration to using finite field arithmetic.
+- Lots of new documentation, lots of cleanup of old documentation.
+- Implemented the "rayon" feature to enabling parallel sharing/reconstructing. Enabled by default.
+- Added new criterion-based benchmarks, to compare performance against 0.10.1, I added those same benchmarks to a branch based on 0.10.1 callled `v0.10.1_with_benches` which includes just the basic_sharing benches since wrapped_sharing is not very equitable to its 0.10.1 version.
+
+### Wrapped sharing
+- Deprecated most of the original sharing `wrapped_sharing` functions
+- Added new, much cleaner `share`/`reconstruct` functions. 
+- Added infinitely more useful, optimized, cleaner `Sharer` and `Reconstructor` structs for large files or streams, compared to the old multitude of share/reconstruct functions that sought to handle those cases.
+   - Heavily inspired by sha3 hash implementation :) 
+- Remove old `Error` variants that are no longer instantiated.
+   - This was missed by linters, they were only ever accessed in the Display impl but never directly instantiated anymore. 
+
+### Basic sharing
+- Completely remove reliance of the very inefficient matrix transposition required when sharing slices of bytes. Included a lot of cloning, a lot of Vec allocations. The benchmark improvements from this alone were ~30%, and for very large secrets >=65536 bytes, a ~90% improvement. 
+  - The time for sharing and reconstructing now also scales very very linearly with the length of secret! 
+- Added parallelization, further improving performance for payloads > 4096 in size.
+- Renamed the `from_secrets_no_points` and `reconstruct_secrets_no_points` by replacing `_no_points` with `_compressed`
+- Cleaned up a lot of unneeded allocations
+- Replaced all argument instances of `&[u8]`  and `Vec<u8>` with `AsRef<[u8]>`
+- Replaced all argument instances of `Vec<Vec<u8>>` with `U: AsRef<[u8]>, T: AsRef<[U]>`
+- Remove old `Error` variants that are no longer instantiated.
+   - This was missed by linters, they were only ever accessed in the Display impl but never directly instantiated anymore. 
+
+
 ## sss-rs 0.10.1 06/05/2023
  - Fix an issue where the hash length was not being calculated correctly during reconstruction
    - This is mostly for correctness and for debugging. The only time this issue would be noticeable is if 
