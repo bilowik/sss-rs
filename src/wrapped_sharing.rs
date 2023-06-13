@@ -420,6 +420,8 @@ impl<'a> std::iter::Iterator for SecretIterator<'a> {
 ///
 /// **verify**: If true, a hash is calculated from the secret and placed at the end to be used
 ///             to verify reconstruction of the secret.
+#[allow(deprecated)]
+#[deprecated(since = "0.11.0", note = "Use share() or Sharer instead")]
 pub fn share_to_writables<'a, T: Read + Seek>(
     mut secret: T,
     dests: &mut Vec<Box<dyn Write + 'a>>,
@@ -538,6 +540,7 @@ pub fn share<T: AsRef<[u8]>>(
 /// ## Deprecation
 /// This is being deprecated in favor of the [Sharer] and [share] which covers this use case far
 /// more gracefully and efficiently.
+#[allow(deprecated)]
 #[deprecated(since = "0.11.0", note = "Use share() or Sharer instead")]
 pub fn share_from_buf<T: Read + Seek>(
     mut secret: T,
@@ -588,6 +591,7 @@ pub fn share_from_buf<T: Read + Seek>(
 /// ## Deprecation
 /// This is being deprecated in favor of the [Sharer] and [share] which covers this use case far
 /// more gracefully and efficiently.
+#[allow(deprecated)]
 #[deprecated(since = "0.11.0", note = "Use share() or Sharer instead")]
 pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
     secret: U,
