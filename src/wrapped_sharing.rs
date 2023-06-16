@@ -12,11 +12,12 @@ use crate::basic_sharing::{
 use sha3::{Digest, Sha3_512};
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{Cursor, Read, Seek, SeekFrom, Write, BufRead, BufReader};
 use std::path::Path;
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
-const READ_SEGMENT_SIZE: usize = 8_192; // 8 KB, which has shown optimal perforamnce
+const READ_SEGMENT_SIZE: usize = 8192; // 8kb
+const DEFAULT_BUF_SIZE: usize = 1 << 22; // 4mb
 
 /// Used to share in chunks, useful for large files.
 ///
@@ -543,6 +544,63 @@ pub fn share<T: AsRef<[u8]>>(
         shares_to_create,
         None,
     )?)
+}
+
+
+/// Convenience method for the common use case of using a BufReader with Sharer to share large
+/// secrets. 
+///
+/// See [Sharer] for more information.
+pub fn share_buffered<T: Read>(secret: T, outputs: &[Box<dyn Write>], shares_required: u8, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+    let mut sharer = Sharer::builder()
+        .with_outputs(outputs)
+        .with_shares_required(shares_required)
+        .with_verify(verify)
+        .build()?;
+    let mut buffered_secret = BufReader::with_capacity(buf_size.unwrap_or(DEFAULT_BUF_SIZE), secret);
+    
+    // Do while loop, which exits when consumed_len == 0, which means we reached the end of the
+    // Read
+    while {
+        let consumed_len = {
+            let curr_chunk = buffered_secret.fill_buf()?;
+            sharer.update(curr_chunk)?;
+            curr_chunk.len()
+        };
+        buffered_secret.consume(consumed_len);
+    
+        
+        consumed_len > 0
+    } { }
+
+    sharer.finalize()
+}
+
+/// Convenience method for the common use case of using BufReaders with Reconstructor to
+/// reconstrcut large secrets
+///
+/// See [Reconstructor] for more information.
+pub fn reconstruct_buffered<T: Write>(inputs: &mut [Box<dyn Read>], secret_dest: T, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+    let mut reconstructor = Reconstructor::new(secret_dest, verify);
+
+    let mut buffered_inputs = inputs
+        .into_iter()
+        .map(|v| BufReader::with_capacity(buf_size.unwrap_or(DEFAULT_BUF_SIZE), v))
+        .collect::<Vec<_>>();
+    
+    // Do while loop, which exits when consumed_len == 0, which means we eached the end of the
+    // Reads.
+    while {  
+        let chunks: Vec<&[u8]> = buffered_inputs.iter_mut()
+            .map(|buffered_input| buffered_input.fill_buf())
+            .collect::<Result<Vec<&[u8]>, std::io::Error>>()?;
+        let num_bytes = reconstructor.update(chunks)?;
+        buffered_inputs.iter().for_each(|buffered_input| buffered_input.consume(num_bytes)); 
+        
+        num_bytes < 0
+    } { }
+    
+    reconstructor.finalize()
 }
 
 /// Creates the shares and places them into a Vec of Vecs. This wraps around
