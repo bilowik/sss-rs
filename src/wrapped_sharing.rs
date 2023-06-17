@@ -1240,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "VerificationFailure")]
     fn sharer_reconstructor_bad_shares() {
         let mut recon_dest = Cursor::new(Vec::new());
         let rando_shares = (0..2)
@@ -1297,7 +1297,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "InconsistentSourceLength")]
     fn buffered_bad_lens() {
         let secret = Cursor::new(b"Hello world");
         let mut outputs = (0..2).map(|_| Cursor::new(Vec::new())).collect::<Vec<_>>();
@@ -1306,8 +1306,6 @@ mod tests {
         outputs.iter_mut().for_each(|o| o.rewind().unwrap());
         let mut recon_secret = Vec::new();
         reconstruct_buffered(&mut outputs, &mut recon_secret, true, Some(256)).unwrap();
-
-
     }
 
 }
