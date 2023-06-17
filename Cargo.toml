@@ -30,6 +30,7 @@ tempfile = "3.6.0"
 default = ["rayon"]
 rayon = ["dep:rayon"]
 wrapped_sharing_bench_use_disk_io = []
+fuzz_tests = []
 
 [[bench]]
 name = "basic_sharing"
