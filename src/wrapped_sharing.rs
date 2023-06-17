@@ -435,7 +435,7 @@ impl<'a> std::iter::Iterator for SecretIterator<'a> {
 /// **verify**: If true, a hash is calculated from the secret and placed at the end to be used
 ///             to verify reconstruction of the secret.
 #[allow(deprecated)]
-#[deprecated(since = "0.11.0", note = "Use share() or Sharer instead")]
+#[deprecated(since = "0.11.0", note = "Use share_buffered instead")]
 pub fn share_to_writables<'a, T: Read + Seek>(
     mut secret: T,
     dests: &mut Vec<Box<dyn Write + 'a>>,
@@ -649,7 +649,7 @@ pub fn reconstruct_buffered_dyn<'a, T: Write, U: AsMut<[Box<dyn Read + 'a>]> + '
 /// This is being deprecated in favor of the [Sharer] and [share] which covers this use case far
 /// more gracefully and efficiently.
 #[allow(deprecated)]
-#[deprecated(since = "0.11.0", note = "Use share() or Sharer instead")]
+#[deprecated(since = "0.11.0", note = "Use share_buffered instead")]
 pub fn share_from_buf<T: Read + Seek>(
     mut secret: T,
     shares_required: u8,
@@ -700,7 +700,7 @@ pub fn share_from_buf<T: Read + Seek>(
 /// This is being deprecated in favor of the [Sharer] and [share] which covers this use case far
 /// more gracefully and efficiently.
 #[allow(deprecated)]
-#[deprecated(since = "0.11.0", note = "Use share() or Sharer instead")]
+#[deprecated(since = "0.11.0", note = "Use share_buffered instead")]
 pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
     secret: U,
     dir: T,
@@ -739,7 +739,7 @@ pub fn share_to_files<T: AsRef<Path>, U: Read + Seek>(
 /// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
 /// more gracefully and efficiently.
 #[allow(deprecated)]
-#[deprecated(since = "0.11.0", note = "Use reconstruct() or Reconstructor instead")]
+#[deprecated(since = "0.11.0", note = "Use reconstruct_buffered instead")]
 pub fn reconstruct_to_buf<T: Read + Write + Seek>(
     secret: T,
     srcs: &[Vec<u8>],
@@ -801,7 +801,7 @@ fn verify_srcs<T: AsRef<[u8]>>(srcs: &[T], verify: bool) -> Result<(), Error> {
 /// ## Deprecation
 /// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
 /// more gracefully and efficiently.
-#[deprecated(since = "0.11.0", note = "Use reconstruct() or Reconstructor instead")]
+#[deprecated(since = "0.11.0", note = "Use reconstruct_buffered instead")]
 pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     mut secret: T,
     srcs: &mut Vec<Box<dyn Read + 'a>>,
@@ -898,7 +898,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
 /// This is being deprecated in favor of the [Reconstructor] and [reconstruct] which covers this use case far
 /// more gracefully and efficiently.
 #[allow(deprecated)]
-#[deprecated(since = "0.11.0", note = "Use reconstruct() or Reconstructor instead")]
+#[deprecated(since = "0.11.0", note = "Use reconstruct_buffered")]
 pub fn reconstruct_from_files<T: AsRef<Path>, U: Read + Write + Seek>(
     secret: U,
     dir: T,
