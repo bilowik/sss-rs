@@ -1296,4 +1296,18 @@ mod tests {
         reconstruct_buffered(&mut outputs, &mut recon_secret, true, Some(256)).unwrap();
     }
 
+    #[test]
+    #[should_panic]
+    fn buffered_bad_lens() {
+        let secret = Cursor::new(b"Hello world");
+        let mut outputs = (0..2).map(|_| Cursor::new(Vec::new())).collect::<Vec<_>>();
+        share_buffered(secret, &mut outputs, 2, true, Some(256)).unwrap(); 
+        outputs[1].write_all(b"oopsies").unwrap();
+        outputs.iter_mut().for_each(|o| o.rewind().unwrap());
+        let mut recon_secret = Vec::new();
+        reconstruct_buffered(&mut outputs, &mut recon_secret, true, Some(256)).unwrap();
+
+
+    }
+
 }
