@@ -72,7 +72,7 @@ impl<'a> Sharer<'a> {
         if (share_outputs.len() < 2) || (share_outputs.len() < (shares_required as usize)) {
             return Err(Error::NotEnoughShareOutputs(share_outputs.len(), shares_required));
         }
-        if share_outputs.len() > 255 {
+        if share_outputs.len() > (u8::MAX as usize)  {
             // This exceeds the number of shares we can create.
             return Err(Error::TooManyShareOutputs(share_outputs.len()));
         }
@@ -259,6 +259,9 @@ impl<T: Write> Reconstructor<T> {
     /// writable output.
     pub fn update<V: AsRef<[U]>, U: AsRef<[u8]>>(&mut self, blocks: V) -> Result<usize, Error> {
         let blocks = blocks.as_ref();
+        if blocks.len() > (u8::MAX as usize) {
+            return Err(Error::TooManyShareInputs(blocks.len()));
+        }
         let lens: Vec<usize> = blocks.iter().map(|block| block.as_ref().len()).collect();
 
         if lens.iter().any(|len| len != &lens[0]) {
@@ -977,6 +980,9 @@ pub enum Error {
 
     /// Occurs when > 255 share outputs are given when constructing a Sharer
     TooManyShareOutputs(usize),
+
+    /// Occurs when > 255 share inputs are given when constructing a Reconstructor
+    TooManyShareInputs(usize),
 }
 
 impl From<crate::basic_sharing::Error> for Error {
@@ -1037,7 +1043,10 @@ Calculated Hash: {}",
                 write!(f, "Need {} share outputs, only {} given. Must be > 2 and >= shares required", given, required)
             }
             Error::TooManyShareOutputs(len) => {
-                write!(f, "Cannot generate {} shares, max is 255", len)
+                write!(f, "Cannot generate {} shares, max is {}", len, u8::MAX)
+            }
+            Error::TooManyShareInputs(len) => {
+                write!(f, "Cannot reconstruct from {} shares, max is {}", len, u8::MAX)
             }
         }
     }
