@@ -83,7 +83,11 @@ pub fn from_secrets<T: AsRef<[u8]>>(
 /// undefined behavior. If you need length checks, see [wrapped_sharing::reconstruct][crate::wrapped_sharing::reconstruct]
 pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + Sync + Send>(
     share_lists: T,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, Error> {
+    if share_lists.as_ref().is_empty() {
+        return Err(Error::InvalidNumberOfShares);
+    }
+
     let share_lists = share_lists.as_ref();
     let len = share_lists[0].as_ref().len();
     let mut result = Vec::with_capacity(len);
@@ -121,7 +125,7 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + S
     #[cfg(not(feature = "rayon"))]
     (0..len).for_each(recon_iter);
 
-    result
+    Ok(result)
 }
 
 /// Wrapper around its corresponding share function but deduplicates the x-value
@@ -150,8 +154,8 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
         ));
     }
 
-    if shares_to_create < 2 {
-        return Err(Error::InvalidNumberOfShares(shares_to_create));
+    if shares_to_create == 0 {
+        return Err(Error::InvalidNumberOfShares);
     }
 
     let mut rng: Box<dyn RngCore> = match rand {
@@ -231,7 +235,7 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
 /// (1-byte X-value),(N-byte share)
 ///
 /// See [reconstruct_secrets] for more documentation.
-pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Vec<u8> {
+pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Result<Vec<u8>, Error> {
     let share_lists = share_lists.as_ref();
     reconstruct_secrets(
         share_lists
@@ -250,7 +254,7 @@ fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
 #[derive(Debug)]
 pub enum Error {
     /// shares_required was < 2
-    InvalidNumberOfShares(u8),
+    InvalidNumberOfShares ,
 
     /// shares_required was > share_to_create
     UnreconstructableSecret(u8, u8),
@@ -260,8 +264,8 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::InvalidNumberOfShares(num) => {
-                write!(f, "Need to generate at least 2 shares. Requested: {}", num)
+            Error::InvalidNumberOfShares => {
+                write!(f, "Need to generate/reconstruct from at least 1 share")
             }
             Error::UnreconstructableSecret(to_create, required) => write!(
                 f,
@@ -314,7 +318,7 @@ mod tests {
         let secret = vec![10, 20, 30, 40, 50];
         let n = 3;
         let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
-        let recon = reconstruct_secrets_compressed(shares);
+        let recon = reconstruct_secrets_compressed(shares).unwrap();
         assert_eq!(secret, recon);
     }
 
@@ -326,7 +330,7 @@ mod tests {
         let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
         println!("shares: {:?}", &shares);
 
-        let recon = reconstruct_secrets_compressed(shares);
+        let recon = reconstruct_secrets_compressed(shares).unwrap();
 
         println!("recon: {:?}", &recon);
 
@@ -343,7 +347,34 @@ mod tests {
         let shares = from_secrets_compressed(&secret, req, cre, None).unwrap();
         
 
-        let recon = reconstruct_secrets_compressed(&shares[0..6]);
+        let recon = reconstruct_secrets_compressed(&shares[0..6]).unwrap();
+        assert_eq!(secret, recon);
+    }
+    
+    // Technically pointless since the created share is just the secret, but this bound
+    // is important for certain guarantees.
+    #[test]
+    fn single_share() {
+        let secret = vec![10, 20, 30, 40, 50];
+        let req = 1;
+        let cre = 1;
+        let shares = from_secrets_compressed(&secret, req, cre, None).unwrap();
+
+        let recon = reconstruct_secrets_compressed(&shares).unwrap();
+
+        assert_eq!(secret, recon);
+    }
+
+    #[test]
+    #[should_panic(expected = "InvalidNumberOfShares")]
+    fn zero_share() {
+        let secret = vec![10, 20, 30, 40, 50];
+        let req = 0;
+        let cre = 0;
+        let shares = from_secrets_compressed(&secret, req, cre, None).unwrap();
+
+        let recon = reconstruct_secrets_compressed(&shares).unwrap();
+
         assert_eq!(secret, recon);
     }
 }

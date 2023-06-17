@@ -304,7 +304,7 @@ impl<T: Write> Reconstructor<T> {
             })
             .collect::<Vec<Vec<u8>>>();
 
-        let recon_chunk = reconstruct_secrets_compressed(expanded_blocks);
+        let recon_chunk = reconstruct_secrets_compressed(expanded_blocks)?;
 
         // Split the recon_chunk into slices of [ X bytes ],[64 bytes]. The last 64 bytes
         // are stored and written in the next call to update, or during finalize when
@@ -761,7 +761,7 @@ pub fn reconstruct<U: AsRef<[u8]>, T: AsRef<[U]>>(srcs: T, verify: bool) -> Resu
     verify_srcs(srcs.as_ref(), verify)?;
 
     if verify {
-        let reconstruction = reconstruct_secrets_compressed(srcs);
+        let reconstruction = reconstruct_secrets_compressed(srcs)?;
         let reconstructed_secret = reconstruction[0..(reconstruction.len() - 64)].to_vec();
         let original_hash = &reconstruction[(reconstruction.len() - 64)..];
         let mut hasher = Sha3_512::new();
@@ -776,7 +776,7 @@ pub fn reconstruct<U: AsRef<[u8]>, T: AsRef<[U]>>(srcs: T, verify: bool) -> Resu
         }
         Ok(reconstructed_secret)
     } else {
-        Ok(reconstruct_secrets_compressed(srcs))
+        Ok(reconstruct_secrets_compressed(srcs)?)
     }
 }
 
@@ -874,7 +874,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
             let segments = get_shares(segment_size, srcs, &x_vals)?;
             // Now segments has a segment from each share src, reconstruct the secret up to that
             // point and write it to the destination
-            secret.write_all(reconstruct_secrets(segments).as_slice())?;
+            secret.write_all(reconstruct_secrets(segments)?.as_slice())?;
             curr_len = curr_len.saturating_sub(READ_SEGMENT_SIZE as u64);
         }
     }
@@ -882,7 +882,7 @@ pub fn reconstruct_from_srcs<'a, T: Read + Write + Seek>(
     if verify {
         // Now read in the hash
         let hash_segments = get_shares(64, srcs, &x_vals)?;
-        let recon_hash = reconstruct_secrets(hash_segments);
+        let recon_hash = reconstruct_secrets(hash_segments)?;
         // Drop dest since if it is a file, we will be re-opening it to read from it to
         // calculate the hash. Ensure output is flushed
         secret.flush().ok();
@@ -1315,6 +1315,29 @@ mod tests {
         outputs.iter_mut().for_each(|o| o.rewind().unwrap());
         let mut recon_secret = Vec::new();
         reconstruct_buffered(&mut outputs, &mut recon_secret, true, Some(256)).unwrap();
+    }
+    
+
+    // Technically valid, but it just ends up being a 0-degree polynomial, each value is just a
+    // constant so it gets spat right back out.
+    #[test]
+    fn reconstruct_from_one_share() {
+        let shares = vec![vec![1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]];
+        let mut output = Vec::new();
+        let mut reconstructor = Reconstructor::new(&mut output, false);
+        reconstructor.update(&shares).unwrap();
+        reconstructor.finalize().unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "NotEnoughShareOutputs")]
+    fn share_one_share() {
+        Sharer::builder()
+            .with_output(Vec::new())
+            .with_shares_required(2)
+            .build()
+            .unwrap();
+
     }
 
 }

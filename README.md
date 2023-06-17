@@ -104,7 +104,7 @@ let shares: Vec<Vec<(u8, u8)>> = from_secrets(
 		shares_to_create,
         None,
 	).unwrap();
-let secret_recon = reconstruct_secrets(shares);
+let secret_recon = reconstruct_secrets(shares).unwrap();
 
 assert_eq!(secret, secret_recon.as_slice());
 ```
@@ -125,7 +125,7 @@ let shares: Vec<Vec<u8>> = from_secrets_compressed(
 		shares_to_create,
         None,
 	).unwrap();
-let secret_recon = reconstruct_secrets_compressed(shares);
+let secret_recon = reconstruct_secrets_compressed(shares).unwrap();
 
 assert_eq!(secret, secret_recon.as_slice());
 ```
