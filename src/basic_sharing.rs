@@ -377,4 +377,10 @@ mod tests {
 
         assert_eq!(secret, recon);
     }
+
+    #[test]
+    fn zero_share_single_value_recon() {
+       let recon = reconstruct_secret(&[]);
+       assert_eq!(recon, 0);
+    }
 }
