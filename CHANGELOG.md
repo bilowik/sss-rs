@@ -1,3 +1,27 @@
+## sss-rs 0.12.0 06/17/2023
+Bumping due to a few missing deprecation notices and some likely-backwards-compatible generics improvements. There
+was also the unhandled case where 0 shares were sent to reconstruct_secrets and would cause a panic, so it's call
+signature had to be changed to Result, which is a breaking change.
+
+### General
+- Better test coverage
+- A fuzzing test to poke around for edge cases (behind the feature flag "fuzz_tests")
+
+### Wrapped sharing
+- Deprecate a few old functions that were missed in 0.11.0. 
+- Checks for number of share outputs/inputs for Sharer/Reconstructor to ensure reconstruction is possible and
+  avoids a u8 overflow panic
+- Wrappers around Sharer/Reconstructor for the common use case of iterating over buffered reads/writes. These
+  are very similar to the deprecated share_to_writeables/reconstruct_from_srcs but are more efficient and handle
+  errors more gracefully.
+
+### Basic Sharing
+- Remove Error::EmptySecretArray, was unused and sharing an empty array is technically valid, although serves no 
+  purpose.
+- Change the call signature of reconstruct functions to Result<...> to avoid a panic when 0 shares are passed to them.
+
+
+
 ## sss-rs 0.11.0 06/12/2023
 A lot of cleanup, a lot of optimizations on all fronts. Most breaking changes occur in just `wrapped_sharing`, `basic_sharing` is relatively untouched in terms of API aside from added generics that should accept all previous usages aside from two function renames.
 
