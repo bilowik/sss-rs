@@ -546,14 +546,28 @@ pub fn share<T: AsRef<[u8]>>(
     )?)
 }
 
+/// Convenience method for the common use case of using a BufReader with Sharer to share large
+/// secrets.
+///
+/// For more flexible outputs, see [share_buffered_dyn]
+/// Also see [Sharer] for more information.
+pub fn share_buffered<T: Read, U: Write, V: AsMut<[U]>>(secret: T, mut outputs: V, shares_required: u8,
+    verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+    let outputs_dyn = outputs.as_mut().iter_mut().map(|o| Box::new(o) as Box<dyn Write>).collect::<Vec<_>>();
+    share_buffered_dyn(secret, outputs_dyn, shares_required, verify, buf_size)
+}
 
 /// Convenience method for the common use case of using a BufReader with Sharer to share large
-/// secrets. 
+/// secrets. Takes a non-homogeneous list of outputs.
 ///
-/// See [Sharer] for more information.
-pub fn share_buffered<'a, T: Read, U: IntoIterator<Item = Box<dyn Write + 'a>> + 'a>(secret: T, outputs: U, shares_required: u8, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+/// This wraps around [Sharer] and updates in chunks of buf_size or the default size of 
+/// 4MB if unspecified.
+///
+/// For outputs that all share the same type, see [share_buffered]
+/// Also see [Sharer] for more information.
+pub fn share_buffered_dyn<'a, T: Read, U: AsMut<[Box<dyn Write + 'a>]> + 'a>(secret: T, mut outputs: U, shares_required: u8, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
     let mut sharer = Sharer::builder()
-        .with_outputs(outputs.into_iter().collect::<Vec<_>>())
+        .with_outputs(outputs.as_mut())
         .with_shares_required(shares_required)
         .with_verify(verify)
         .build()?;
@@ -579,12 +593,35 @@ pub fn share_buffered<'a, T: Read, U: IntoIterator<Item = Box<dyn Write + 'a>> +
 /// Convenience method for the common use case of using BufReaders with Reconstructor to
 /// reconstrcut large secrets
 ///
-/// See [Reconstructor] for more information.
-pub fn reconstruct_buffered<'a, T: Write, U: IntoIterator<Item = Box<dyn Read + 'a>> + 'a>(inputs: U, secret_dest: T, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+/// This wraps around [Reconstructor] and updates in chunks of buf_size or the default size of 
+/// 4MB if unspecified. The inputs must provide the same number of total bytes.
+///
+/// For more flexibility for inputs, see [reconstruct_buffered_dyn] 
+/// Also see [Reconstructor] for more information.
+pub fn reconstruct_buffered<T: Write, U: Read, V: AsMut<[U]>>(
+    mut inputs: V,
+    secret_dest: T,
+    verify: bool,
+    buf_size: Option<usize>
+) -> Result<u64, Error> {
+    let inputs_dyn = inputs.as_mut().iter_mut().map(|i| Box::new(i) as Box<dyn Read>).collect::<Vec<_>>();
+    reconstruct_buffered_dyn(inputs_dyn, secret_dest, verify, buf_size)
+}
+
+/// Convenience method for the common use case of using BufReaders with Reconstructor to
+/// reconstrcut large secrets
+///
+/// This wraps around [Reconstructor] and updates in chunks of buf_size or the default size of 
+/// 4MB if unspecified. The inputs must provide the same number of total bytes.
+///
+/// For inputs that all share the same type, see [reconstruct_buffered] for simpler usage.
+/// Also see [Reconstructor] for more information.
+pub fn reconstruct_buffered_dyn<'a, T: Write, U: AsMut<[Box<dyn Read + 'a>]> + 'a>(mut inputs: U, secret_dest: T, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
     let mut reconstructor = Reconstructor::new(secret_dest, verify);
 
-    let mut buffered_inputs = inputs.into_iter()
-        .into_iter()
+    let mut buffered_inputs = inputs
+        .as_mut()
+        .iter_mut()
         .map(|v| BufReader::with_capacity(buf_size.unwrap_or(DEFAULT_BUF_SIZE), v))
         .collect::<Vec<_>>();
     
@@ -1120,7 +1157,7 @@ mod tests {
 
         assert_eq!(secret, recon_secret);
     }
-
+    
     fn sharer_reconstructor_base<T: AsRef<[u8]> + Copy>(
         secret_chunks: &[T],
         shares_required: u8,
@@ -1238,7 +1275,7 @@ mod tests {
             Box::new(&mut share_2) as Box<dyn Write>,
         ];
 
-        share_buffered(&mut secret, outputs, 2, true, Some(256)).unwrap();
+        share_buffered_dyn(&mut secret, outputs, 2, true, Some(256)).unwrap();
         let mut recon_secret = Vec::with_capacity(secret_size);
         let inputs = [
             Box::new(Cursor::new(&share_1)) as Box<dyn Read>,
@@ -1247,8 +1284,5 @@ mod tests {
         
         reconstruct_buffered(inputs, &mut recon_secret, true, Some(256)).unwrap();
         assert_eq!(secret.into_inner(), recon_secret);
-
-
-
     }
 }
