@@ -255,14 +255,11 @@ pub enum Error {
     /// shares_required was > share_to_create
     UnreconstructableSecret(u8, u8),
 
-    /// The given secret was empty
-    EmptySecretArray,
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Error::EmptySecretArray => write!(f, "Secret array should not be empty"),
             Error::InvalidNumberOfShares(num) => {
                 write!(f, "Need to generate at least 2 shares. Requested: {}", num)
             }
@@ -319,5 +316,21 @@ mod tests {
         let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
         let recon = reconstruct_secrets_compressed(shares);
         assert_eq!(secret, recon);
+    }
+
+    #[test]
+    fn empty_secret() {
+        let secret = Vec::new();
+        let n = 2;
+
+        let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
+        println!("shares: {:?}", &shares);
+
+        let recon = reconstruct_secrets_compressed(shares);
+
+        println!("recon: {:?}", &recon);
+
+        assert_eq!(secret, recon);
+
     }
 }
