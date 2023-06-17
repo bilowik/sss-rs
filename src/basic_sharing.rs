@@ -333,4 +333,17 @@ mod tests {
         assert_eq!(secret, recon);
 
     }
+    
+    // Verifies reconstruction can take place when using more shares than needed.
+    #[test]
+    fn addtl_shares_for_recon() {
+        let secret = vec![10, 20, 30, 40, 50];
+        let req = 3;
+        let cre = 8;
+        let shares = from_secrets_compressed(&secret, req, cre, None).unwrap();
+        
+
+        let recon = reconstruct_secrets_compressed(&shares[0..6]);
+        assert_eq!(secret, recon);
+    }
 }
