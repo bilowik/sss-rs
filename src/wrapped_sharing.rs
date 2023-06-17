@@ -1285,4 +1285,15 @@ mod tests {
         reconstruct_buffered(inputs, &mut recon_secret, true, Some(256)).unwrap();
         assert_eq!(secret.into_inner(), recon_secret);
     }
+
+    #[test]
+    fn buffered_empty() {
+        let secret = Cursor::new(Vec::new());
+        let mut outputs = (0..2).map(|_| Cursor::new(Vec::new())).collect::<Vec<_>>();
+        share_buffered(secret, &mut outputs, 2, true, Some(256)).unwrap(); 
+        outputs.iter_mut().for_each(|o| o.rewind().unwrap());
+        let mut recon_secret = Vec::new();
+        reconstruct_buffered(&mut outputs, &mut recon_secret, true, Some(256)).unwrap();
+    }
+
 }
