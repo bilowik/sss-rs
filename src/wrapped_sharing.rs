@@ -551,9 +551,9 @@ pub fn share<T: AsRef<[u8]>>(
 /// secrets. 
 ///
 /// See [Sharer] for more information.
-pub fn share_buffered<T: Read>(secret: T, outputs: &[Box<dyn Write>], shares_required: u8, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+pub fn share_buffered<'a, T: Read, U: IntoIterator<Item = Box<dyn Write + 'a>> + 'a>(secret: T, outputs: U, shares_required: u8, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
     let mut sharer = Sharer::builder()
-        .with_outputs(outputs)
+        .with_outputs(outputs.into_iter().collect::<Vec<_>>())
         .with_shares_required(shares_required)
         .with_verify(verify)
         .build()?;
@@ -562,15 +562,15 @@ pub fn share_buffered<T: Read>(secret: T, outputs: &[Box<dyn Write>], shares_req
     // Do while loop, which exits when consumed_len == 0, which means we reached the end of the
     // Read
     while {
-        let consumed_len = {
+        let num_bytes = {
             let curr_chunk = buffered_secret.fill_buf()?;
             sharer.update(curr_chunk)?;
             curr_chunk.len()
         };
-        buffered_secret.consume(consumed_len);
+        buffered_secret.consume(num_bytes);
     
         
-        consumed_len > 0
+        num_bytes > 0
     } { }
 
     sharer.finalize()
@@ -580,10 +580,10 @@ pub fn share_buffered<T: Read>(secret: T, outputs: &[Box<dyn Write>], shares_req
 /// reconstrcut large secrets
 ///
 /// See [Reconstructor] for more information.
-pub fn reconstruct_buffered<T: Write>(inputs: &mut [Box<dyn Read>], secret_dest: T, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+pub fn reconstruct_buffered<'a, T: Write, U: IntoIterator<Item = Box<dyn Read + 'a>> + 'a>(inputs: U, secret_dest: T, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
     let mut reconstructor = Reconstructor::new(secret_dest, verify);
 
-    let mut buffered_inputs = inputs
+    let mut buffered_inputs = inputs.into_iter()
         .into_iter()
         .map(|v| BufReader::with_capacity(buf_size.unwrap_or(DEFAULT_BUF_SIZE), v))
         .collect::<Vec<_>>();
@@ -595,9 +595,9 @@ pub fn reconstruct_buffered<T: Write>(inputs: &mut [Box<dyn Read>], secret_dest:
             .map(|buffered_input| buffered_input.fill_buf())
             .collect::<Result<Vec<&[u8]>, std::io::Error>>()?;
         let num_bytes = reconstructor.update(chunks)?;
-        buffered_inputs.iter().for_each(|buffered_input| buffered_input.consume(num_bytes)); 
+        buffered_inputs.iter_mut().for_each(|buffered_input| buffered_input.consume(num_bytes)); 
         
-        num_bytes < 0
+        num_bytes > 0
     } { }
     
     reconstructor.finalize()
@@ -1217,6 +1217,38 @@ mod tests {
     #[test]
     fn sharer_empty() {
         assert!(Sharer::builder().build().is_err());
+    }
+
+    #[test] 
+    fn buffered() {
+        let secret_size = 8192;
+        let mut secret = Cursor::new((0..(secret_size / 32))
+            .map(|_| thread_rng().gen::<[u8; 32]>())
+            .fold(Vec::with_capacity(secret_size), |mut acc, v| {
+                acc.extend(v);
+                acc
+            }));
+        let mut share_1 = Vec::with_capacity(secret_size + 1);
+        let mut share_2 = Vec::with_capacity(secret_size + 1);
+
+        // Could not for the life of me figure out how to get an iterator to do this with mutable
+        // references.
+        let outputs = [
+            Box::new(&mut share_1) as Box<dyn Write>,
+            Box::new(&mut share_2) as Box<dyn Write>,
+        ];
+
+        share_buffered(&mut secret, outputs, 2, true, Some(256)).unwrap();
+        let mut recon_secret = Vec::with_capacity(secret_size);
+        let inputs = [
+            Box::new(Cursor::new(&share_1)) as Box<dyn Read>,
+            Box::new(Cursor::new(&share_2)) as Box<dyn Read>,
+        ];
+        
+        reconstruct_buffered(inputs, &mut recon_secret, true, Some(256)).unwrap();
+        assert_eq!(secret.into_inner(), recon_secret);
+
+
 
     }
 }
