@@ -564,20 +564,11 @@ pub enum Error {
     /// An invalid number of shares was provided, needs to be > 1
     InvalidNumberOfShares(u8),
 
-    /// Not enough writable destinations were provided during sharing (deprecated)
-    NotEnoughWriteableDestinations(usize, u8),
-
     /// The calculated hash after reconstruction did not match the hash found at the end of the
     /// secret
     VerificationFailure(String, String),
 
-    /// The secret file was too large to share (deprecated)
-    SecretTooLarge(u64),
-
-    /// std::io::Error but with the file path as additional context (deprecated)
-    FileError(String, std::io::Error),
-
-    /// std::io::Error (deprecated)
+    /// std::io::Error
     IOError(std::io::Error),
 
     /// An error from basic_sharing functions, see [crate::basic_sharing::Error]
@@ -618,11 +609,6 @@ impl std::fmt::Display for Error {
                 "Must create at least 2 shares for sharing. Given: {}",
                 given
             ),
-            Error::NotEnoughWriteableDestinations(given, needed) => write!(
-                f,
-                "Need {} writable destinations for shares, only given {}",
-                needed, given
-            ),
             Error::VerificationFailure(original_hash, calculated_hash) => write!(
                 f,
                 "Verification of reconstructed secret failed. Mismatched hashes:
@@ -630,14 +616,6 @@ Original Hash: {}
 Calculated Hash: {}",
                 original_hash, calculated_hash
             ),
-            Error::SecretTooLarge(secret_len) => write!(
-                f,
-                "Cannot fit secret into a Vec since it exceeds usize max. Secret length: {}",
-                secret_len
-            ),
-            Error::FileError(path, source) => {
-                write!(f, "File with path '{}' could not be used: {}", path, source)
-            }
             Error::IOError(source) => {
                 write!(f, "IOError: '{}'", source)
             }
