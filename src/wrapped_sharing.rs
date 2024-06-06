@@ -396,37 +396,6 @@ impl<T: Read + Seek> SecretTrait for T {
     }
 }
 
-/// Iterator that iterates over a given Secret, returning smaller segments of it at a time.
-///
-/// Returns Option<Result<Vec<u8>, Error>> because file reads may fail, and in that case
-/// Some(Err(_)) is returned.
-///
-/// Iteration can continue, but the behavior is undefined as it may be
-/// able to continue reading or may not depending on the initial error. See std::io::Error for
-/// possible errors.
-struct SecretIterator<'a> {
-    reader: Box<dyn Read + 'a>, // reader is a reader of the vec in secret, or it's to an open file
-}
-impl<'a> std::iter::Iterator for SecretIterator<'a> {
-    type Item = Result<Vec<u8>, Error>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let bytes_to_read = std::mem::size_of::<u8>() * READ_SEGMENT_SIZE;
-        let mut result = Vec::with_capacity(bytes_to_read);
-        if let Err(e) = (&mut self.reader)
-            .take(bytes_to_read as u64)
-            .read_to_end(&mut result)
-        {
-            // Return the error if an error ocurred during reading the next segment
-            return Some(Err(e.into()));
-        }
-        if result.is_empty() {
-            return None;
-        }
-        Some(Ok(result))
-    }
-}
-
 /// Shares all the shares to individual writable destinations.
 ///
 /// This iterates through the
