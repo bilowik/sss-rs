@@ -511,41 +511,22 @@ pub fn reconstruct_buffered_dyn<'a, T: Write, U: AsMut<[Box<dyn Read + 'a>]> + '
 
 /// Reconstructs a secret to a vec
 pub fn reconstruct<U: AsRef<[u8]>, T: AsRef<[U]>>(srcs: T, verify: bool) -> Result<Vec<u8>, Error> {
-    verify_srcs(srcs.as_ref(), verify)?;
+    let guessed_size = srcs.as_ref().get(0).map(|s| s.as_ref().len()).unwrap_or(1);
 
-    if verify {
-        let reconstruction = reconstruct_secrets_compressed(srcs)?;
-        let reconstructed_secret = reconstruction[0..(reconstruction.len() - 64)].to_vec();
-        let original_hash = &reconstruction[(reconstruction.len() - 64)..];
-        let mut hasher = Sha3_512::new();
-        hasher.update(&reconstructed_secret);
-        let calculated_hash = hasher.finalize();
-        //if &AsRef::<[u8]>::as_ref(&calculated_hash) != &original_hash {
-        if calculated_hash.as_slice() != original_hash {
-            return Err(Error::VerificationFailure(
-                hex::encode(original_hash),
-                hex::encode(&calculated_hash),
-            ));
-        }
-        Ok(reconstructed_secret)
-    } else {
-        Ok(reconstruct_secrets_compressed(srcs)?)
-    }
-}
+    // If the below get() is None, then we will allow Reconstructor to throw the error.
+    let mut output = Vec::with_capacity(guessed_size);
 
-fn verify_srcs<T: AsRef<[u8]>>(srcs: &[T], verify: bool) -> Result<(), Error> {
-    if verify && (srcs[0].as_ref().len() <= 64) {
-        return Err(Error::NotEnoughBytesInSrc(srcs[0].as_ref().len() as u64));
-    }
-    let lens = srcs
-        .iter()
-        .map(|s| s.as_ref().len())
-        .collect::<Vec<usize>>();
+    reconstruct_buffered(
+        srcs.as_ref()
+            .iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&[u8]>>(),
+        &mut output,
+        verify,
+        Some(guessed_size),
+    )?;
 
-    if lens.iter().any(|len| len != &lens[0]) {
-        return Err(Error::InconsistentSourceLength(lens));
-    }
-    Ok(())
+    Ok(output)
 }
 
 /// Error for wrapped_sharing API, any error marked with (deprecated) will not be encountered
