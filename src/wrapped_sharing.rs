@@ -370,28 +370,22 @@ pub fn share<T: AsRef<[u8]>>(
     shares_to_create: u8,
     verify: bool,
 ) -> Result<Vec<Vec<u8>>, Error> {
-    // Need to define this out here so it is available outside the below if statement.
-    // We want to avoid doing an extra allocation when verify is false and we also
-    // want to avoid duplicating any code.
-    let mut secret_and_hash;
     let secret = secret.as_ref();
-    let full_secret = if verify {
-        secret_and_hash = Vec::with_capacity(secret.len() + 64);
-        secret_and_hash.extend(secret);
-        let mut hasher = Sha3_512::new();
-        hasher.update(secret);
-        let hash = hasher.finalize();
-        secret_and_hash.extend(hash);
-        &secret_and_hash
-    } else {
-        secret
-    };
-    Ok(from_secrets_compressed(
-        full_secret,
+    let len = secret.len() + if verify { 64 } else { 0 };
+
+    let mut outputs = (0..shares_to_create)
+        .map(|_| Vec::with_capacity(len))
+        .collect();
+
+    share_buffered(
+        secret,
+        &mut outputs,
         shares_required,
-        shares_to_create,
-        None,
-    )?)
+        verify,
+        Some(secret.len()),
+    )?;
+
+    Ok(outputs)
 }
 
 /// Convenience method for the common use case of using a BufReader with Sharer to share large
