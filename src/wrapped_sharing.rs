@@ -12,7 +12,7 @@ use crate::basic_sharing::{
 use sha3::{Digest, Sha3_512};
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io::{Cursor, Read, Seek, SeekFrom, Write, BufRead, BufReader};
+use std::io::{BufRead, BufReader, Cursor, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 const NUM_FIRST_BYTES_FOR_VERIFY: usize = 32;
@@ -70,9 +70,12 @@ impl<'a> Sharer<'a> {
         verify: bool,
     ) -> Result<Self, Error> {
         if (share_outputs.len() < 2) || (share_outputs.len() < (shares_required as usize)) {
-            return Err(Error::NotEnoughShareOutputs(share_outputs.len(), shares_required));
+            return Err(Error::NotEnoughShareOutputs(
+                share_outputs.len(),
+                shares_required,
+            ));
         }
-        if share_outputs.len() > (u8::MAX as usize)  {
+        if share_outputs.len() > (u8::MAX as usize) {
             // This exceeds the number of shares we can create.
             return Err(Error::TooManyShareOutputs(share_outputs.len()));
         }
@@ -156,10 +159,14 @@ impl<'a> SharerBuilder<'a> {
             .push(Box::new(output) as Box<dyn Write + 'a>);
         self
     }
-    
+
     /// Appends the given outputs to the current list of outputs
     pub fn with_outputs<T: Write + 'a, I: IntoIterator<Item = T>>(mut self, outputs: I) -> Self {
-        self.share_outputs.extend(outputs.into_iter().map(|v| Box::new(v) as Box<dyn Write + 'a>));
+        self.share_outputs.extend(
+            outputs
+                .into_iter()
+                .map(|v| Box::new(v) as Box<dyn Write + 'a>),
+        );
         self
     }
 
@@ -523,28 +530,44 @@ pub fn share<T: AsRef<[u8]>>(
 ///
 /// For more flexible outputs, see [share_buffered_dyn]
 /// Also see [Sharer] for more information.
-pub fn share_buffered<T: Read, U: Write, V: AsMut<[U]>>(secret: T, mut outputs: V, shares_required: u8,
-    verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
-    let outputs_dyn = outputs.as_mut().iter_mut().map(|o| Box::new(o) as Box<dyn Write>).collect::<Vec<_>>();
+pub fn share_buffered<T: Read, U: Write, V: AsMut<[U]>>(
+    secret: T,
+    mut outputs: V,
+    shares_required: u8,
+    verify: bool,
+    buf_size: Option<usize>,
+) -> Result<u64, Error> {
+    let outputs_dyn = outputs
+        .as_mut()
+        .iter_mut()
+        .map(|o| Box::new(o) as Box<dyn Write>)
+        .collect::<Vec<_>>();
     share_buffered_dyn(secret, outputs_dyn, shares_required, verify, buf_size)
 }
 
 /// Convenience method for the common use case of using a BufReader with Sharer to share large
 /// secrets. Takes a non-homogeneous list of outputs.
 ///
-/// This wraps around [Sharer] and updates in chunks of buf_size or the default size of 
+/// This wraps around [Sharer] and updates in chunks of buf_size or the default size of
 /// 4MB if unspecified.
 ///
 /// For outputs that all share the same type, see [share_buffered]
 /// Also see [Sharer] for more information.
-pub fn share_buffered_dyn<'a, T: Read, U: AsMut<[Box<dyn Write + 'a>]> + 'a>(secret: T, mut outputs: U, shares_required: u8, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+pub fn share_buffered_dyn<'a, T: Read, U: AsMut<[Box<dyn Write + 'a>]> + 'a>(
+    secret: T,
+    mut outputs: U,
+    shares_required: u8,
+    verify: bool,
+    buf_size: Option<usize>,
+) -> Result<u64, Error> {
     let mut sharer = Sharer::builder()
         .with_outputs(outputs.as_mut())
         .with_shares_required(shares_required)
         .with_verify(verify)
         .build()?;
-    let mut buffered_secret = BufReader::with_capacity(buf_size.unwrap_or(DEFAULT_BUF_SIZE), secret);
-    
+    let mut buffered_secret =
+        BufReader::with_capacity(buf_size.unwrap_or(DEFAULT_BUF_SIZE), secret);
+
     // Do while loop, which exits when consumed_len == 0, which means we reached the end of the
     // Read
     while {
@@ -554,10 +577,9 @@ pub fn share_buffered_dyn<'a, T: Read, U: AsMut<[Box<dyn Write + 'a>]> + 'a>(sec
             curr_chunk.len()
         };
         buffered_secret.consume(num_bytes);
-    
-        
+
         num_bytes > 0
-    } { }
+    } {}
 
     sharer.finalize()
 }
@@ -565,30 +587,39 @@ pub fn share_buffered_dyn<'a, T: Read, U: AsMut<[Box<dyn Write + 'a>]> + 'a>(sec
 /// Convenience method for the common use case of using BufReaders with Reconstructor to
 /// reconstrcut large secrets
 ///
-/// This wraps around [Reconstructor] and updates in chunks of buf_size or the default size of 
+/// This wraps around [Reconstructor] and updates in chunks of buf_size or the default size of
 /// 4MB if unspecified. The inputs must provide the same number of total bytes.
 ///
-/// For more flexibility for inputs, see [reconstruct_buffered_dyn] 
+/// For more flexibility for inputs, see [reconstruct_buffered_dyn]
 /// Also see [Reconstructor] for more information.
 pub fn reconstruct_buffered<T: Write, U: Read, V: AsMut<[U]>>(
     mut inputs: V,
     secret_dest: T,
     verify: bool,
-    buf_size: Option<usize>
+    buf_size: Option<usize>,
 ) -> Result<u64, Error> {
-    let inputs_dyn = inputs.as_mut().iter_mut().map(|i| Box::new(i) as Box<dyn Read>).collect::<Vec<_>>();
+    let inputs_dyn = inputs
+        .as_mut()
+        .iter_mut()
+        .map(|i| Box::new(i) as Box<dyn Read>)
+        .collect::<Vec<_>>();
     reconstruct_buffered_dyn(inputs_dyn, secret_dest, verify, buf_size)
 }
 
 /// Convenience method for the common use case of using BufReaders with Reconstructor to
 /// reconstrcut large secrets
 ///
-/// This wraps around [Reconstructor] and updates in chunks of buf_size or the default size of 
+/// This wraps around [Reconstructor] and updates in chunks of buf_size or the default size of
 /// 4MB if unspecified. The inputs must provide the same number of total bytes.
 ///
 /// For inputs that all share the same type, see [reconstruct_buffered] for simpler usage.
 /// Also see [Reconstructor] for more information.
-pub fn reconstruct_buffered_dyn<'a, T: Write, U: AsMut<[Box<dyn Read + 'a>]> + 'a>(mut inputs: U, secret_dest: T, verify: bool, buf_size: Option<usize>) -> Result<u64, Error> {
+pub fn reconstruct_buffered_dyn<'a, T: Write, U: AsMut<[Box<dyn Read + 'a>]> + 'a>(
+    mut inputs: U,
+    secret_dest: T,
+    verify: bool,
+    buf_size: Option<usize>,
+) -> Result<u64, Error> {
     let mut reconstructor = Reconstructor::new(secret_dest, verify);
 
     let mut buffered_inputs = inputs
@@ -596,19 +627,22 @@ pub fn reconstruct_buffered_dyn<'a, T: Write, U: AsMut<[Box<dyn Read + 'a>]> + '
         .iter_mut()
         .map(|v| BufReader::with_capacity(buf_size.unwrap_or(DEFAULT_BUF_SIZE), v))
         .collect::<Vec<_>>();
-    
+
     // Do while loop, which exits when consumed_len == 0, which means we eached the end of the
     // Reads.
-    while {  
-        let chunks: Vec<&[u8]> = buffered_inputs.iter_mut()
+    while {
+        let chunks: Vec<&[u8]> = buffered_inputs
+            .iter_mut()
             .map(|buffered_input| buffered_input.fill_buf())
             .collect::<Result<Vec<&[u8]>, std::io::Error>>()?;
         let num_bytes = reconstructor.update(chunks)?;
-        buffered_inputs.iter_mut().for_each(|buffered_input| buffered_input.consume(num_bytes)); 
-        
+        buffered_inputs
+            .iter_mut()
+            .for_each(|buffered_input| buffered_input.consume(num_bytes));
+
         num_bytes > 0
-    } { }
-    
+    } {}
+
     reconstructor.finalize()
 }
 
@@ -942,10 +976,10 @@ pub enum Error {
 
     /// During reconstruction, the given source chunks did not have equal lengths.
     InconsistentSourceLength(Vec<usize>),
-    
+
     /// Occurs when < 2 share outputs are given or number of share outputs is less than the shares
     /// required.
-    NotEnoughShareOutputs(usize, u8), 
+    NotEnoughShareOutputs(usize, u8),
 
     /// Occurs when > 255 share outputs are given when constructing a Sharer
     TooManyShareOutputs(usize),
@@ -1000,22 +1034,31 @@ Calculated Hash: {}",
             }
             Error::NotEnoughBytesInSrc(bytes) => {
                 write!(
-                    f, 
+                    f,
                    "The given length ({}) is not long enough for reconstruction, must be >65 if verify, else >2", 
-                   bytes 
+                   bytes
                 )
             }
             Error::InconsistentSourceLength(lens) => {
                 write!(f, "The given chunks have differing lengths: {:?}", lens,)
             }
             Error::NotEnoughShareOutputs(given, required) => {
-                write!(f, "Need {} share outputs, only {} given. Must be > 2 and >= shares required", given, required)
+                write!(
+                    f,
+                    "Need {} share outputs, only {} given. Must be > 2 and >= shares required",
+                    given, required
+                )
             }
             Error::TooManyShareOutputs(len) => {
                 write!(f, "Cannot generate {} shares, max is {}", len, u8::MAX)
             }
             Error::TooManyShareInputs(len) => {
-                write!(f, "Cannot reconstruct from {} shares, max is {}", len, u8::MAX)
+                write!(
+                    f,
+                    "Cannot reconstruct from {} shares, max is {}",
+                    len,
+                    u8::MAX
+                )
             }
         }
     }
@@ -1135,7 +1178,7 @@ mod tests {
 
         assert_eq!(secret, recon_secret);
     }
-    
+
     fn sharer_reconstructor_base<T: AsRef<[u8]> + Copy>(
         secret_chunks: &[T],
         shares_required: u8,
@@ -1234,15 +1277,17 @@ mod tests {
         assert!(Sharer::builder().build().is_err());
     }
 
-    #[test] 
+    #[test]
     fn buffered() {
         let secret_size = 8192;
-        let mut secret = Cursor::new((0..(secret_size / 32))
-            .map(|_| thread_rng().gen::<[u8; 32]>())
-            .fold(Vec::with_capacity(secret_size), |mut acc, v| {
-                acc.extend(v);
-                acc
-            }));
+        let mut secret = Cursor::new(
+            (0..(secret_size / 32))
+                .map(|_| thread_rng().gen::<[u8; 32]>())
+                .fold(Vec::with_capacity(secret_size), |mut acc, v| {
+                    acc.extend(v);
+                    acc
+                }),
+        );
         let mut share_1 = Vec::with_capacity(secret_size + 1);
         let mut share_2 = Vec::with_capacity(secret_size + 1);
 
@@ -1259,7 +1304,7 @@ mod tests {
             Box::new(Cursor::new(&share_1)) as Box<dyn Read>,
             Box::new(Cursor::new(&share_2)) as Box<dyn Read>,
         ];
-        
+
         reconstruct_buffered(inputs, &mut recon_secret, true, Some(256)).unwrap();
         assert_eq!(secret.into_inner(), recon_secret);
     }
@@ -1268,7 +1313,7 @@ mod tests {
     fn buffered_empty() {
         let secret = Cursor::new(Vec::new());
         let mut outputs = (0..2).map(|_| Cursor::new(Vec::new())).collect::<Vec<_>>();
-        share_buffered(secret, &mut outputs, 2, true, Some(256)).unwrap(); 
+        share_buffered(secret, &mut outputs, 2, true, Some(256)).unwrap();
         outputs.iter_mut().for_each(|o| o.rewind().unwrap());
         let mut recon_secret = Vec::new();
         reconstruct_buffered(&mut outputs, &mut recon_secret, true, Some(256)).unwrap();
@@ -1279,13 +1324,12 @@ mod tests {
     fn buffered_bad_lens() {
         let secret = Cursor::new(b"Hello world");
         let mut outputs = (0..2).map(|_| Cursor::new(Vec::new())).collect::<Vec<_>>();
-        share_buffered(secret, &mut outputs, 2, true, Some(256)).unwrap(); 
+        share_buffered(secret, &mut outputs, 2, true, Some(256)).unwrap();
         outputs[1].write_all(b"oopsies").unwrap();
         outputs.iter_mut().for_each(|o| o.rewind().unwrap());
         let mut recon_secret = Vec::new();
         reconstruct_buffered(&mut outputs, &mut recon_secret, true, Some(256)).unwrap();
     }
-    
 
     // Technically valid, but it just ends up being a 0-degree polynomial, each value is just a
     // constant so it gets spat right back out.
@@ -1306,7 +1350,5 @@ mod tests {
             .with_shares_required(2)
             .build()
             .unwrap();
-
     }
-
 }

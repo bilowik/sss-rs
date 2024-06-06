@@ -113,7 +113,7 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + S
                 ));
         }
     };
-    
+
     #[cfg(feature = "rayon")]
     if len < PAR_CUTOFF_RECON {
         // This is the cutoff point where parallelization overhead exceeds the performance gain
@@ -191,7 +191,6 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
     // Need to send the ptr between threads which is safe here since we guarantee
     // that no two threads will read nor write to the same index.
     let shares_list_ptr: isize = unsafe { transmute(shares_list.as_mut_ptr()) };
-    
 
     let share_iter = |(idx, s): (usize, &u8)| {
         let mut share_poly = GaloisPolynomial::new();
@@ -213,15 +212,13 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
     };
 
     #[cfg(feature = "rayon")]
-    if secret.len() < PAR_CUTOFF_SHARING { 
+    if secret.len() < PAR_CUTOFF_SHARING {
         secret.iter().enumerate().for_each(share_iter);
-    }
-    else {
+    } else {
         secret.par_iter().enumerate().for_each(share_iter);
     }
     #[cfg(not(feature = "rayon"))]
     secret.iter().enumerate().for_each(share_iter);
-    
 
     Ok(shares_list)
 }
@@ -235,7 +232,9 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
 /// (1-byte X-value),(N-byte share)
 ///
 /// See [reconstruct_secrets] for more documentation.
-pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(share_lists: T) -> Result<Vec<u8>, Error> {
+pub fn reconstruct_secrets_compressed<U: AsRef<[u8]>, T: AsRef<[U]>>(
+    share_lists: T,
+) -> Result<Vec<u8>, Error> {
     let share_lists = share_lists.as_ref();
     reconstruct_secrets(
         share_lists
@@ -254,11 +253,10 @@ fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
 #[derive(Debug)]
 pub enum Error {
     /// shares_required was < 2
-    InvalidNumberOfShares ,
+    InvalidNumberOfShares,
 
     /// shares_required was > share_to_create
     UnreconstructableSecret(u8, u8),
-
 }
 
 impl std::fmt::Display for Error {
@@ -335,9 +333,8 @@ mod tests {
         println!("recon: {:?}", &recon);
 
         assert_eq!(secret, recon);
-
     }
-    
+
     // Verifies reconstruction can take place when using more shares than needed.
     #[test]
     fn addtl_shares_for_recon() {
@@ -345,12 +342,11 @@ mod tests {
         let req = 3;
         let cre = 8;
         let shares = from_secrets_compressed(&secret, req, cre, None).unwrap();
-        
 
         let recon = reconstruct_secrets_compressed(&shares[0..6]).unwrap();
         assert_eq!(secret, recon);
     }
-    
+
     // Technically pointless since the created share is just the secret, but this bound
     // is important for certain guarantees.
     #[test]
@@ -380,7 +376,7 @@ mod tests {
 
     #[test]
     fn zero_share_single_value_recon() {
-       let recon = reconstruct_secret(&[]);
-       assert_eq!(recon, 0);
+        let recon = reconstruct_secret(&[]);
+        assert_eq!(recon, 0);
     }
 }
