@@ -225,22 +225,22 @@ fn noop_hash(_hasher: &mut Option<Sha3_512>, _bytes: &[u8]) {}
 /// reconstructor.finalize().unwrap();
 /// assert_eq!(&full_secret, &recon_dest.into_inner().as_slice());
 /// ```
-pub struct Reconstructor<T: Write> {
-    secret_dest: T,
+pub struct Reconstructor<'a> {
+    secret_dest: Box<dyn Write + 'a>,
     hasher: Option<Sha3_512>,
     x_vals: Option<Vec<u8>>,
-    update_inner: fn(&mut Reconstructor<T>, &[&[u8]]) -> Result<(), Error>,
+    update_inner: fn(&mut Reconstructor<'a>, &[&[u8]]) -> Result<(), Error>,
     hash_op: fn(&mut Option<Sha3_512>, &[u8]),
     last_64_bytes: Vec<u8>,
     bytes_reconstructed: u64,
 }
 
-impl<T: Write> Reconstructor<T> {
+impl<'a> Reconstructor<'a> {
     /// Creates a new instance of Reconstructor
-    pub fn new(secret_dest: T, verify: bool) -> Self {
+    pub fn new<T: Write + 'a>(secret_dest: T, verify: bool) -> Self {
         let hash_op = if verify { add_to_hash } else { noop_hash };
         Self {
-            secret_dest,
+            secret_dest: Box::new(secret_dest) as Box<dyn Write + 'a>,
             hasher: verify.then_some(Sha3_512::new()),
             x_vals: None,
             update_inner: Reconstructor::first_update,
