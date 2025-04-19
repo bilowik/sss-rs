@@ -6,7 +6,8 @@
 //!
 //! For implementing custom wrappers or abstractions, [basic_sharing][crate::basic_sharing]
 //! functions can be utilized if finer-tuned control is needed.
-use crate::basic_sharing::{from_secrets_compressed, reconstruct_secrets_compressed};
+use crate::basic_sharing::{from_secrets_compressed_inner, reconstruct_secrets_compressed};
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use sha3::{Digest, Sha3_512};
 use std::io::{BufRead, BufReader, Read, Write};
 
@@ -43,6 +44,7 @@ pub struct Sharer<'a> {
     hasher: Option<Sha3_512>,
     hash_op: fn(&mut Option<Sha3_512>, &[u8]),
     shares_required: u8,
+    x_values: Vec<u8>,
 }
 
 /// Builder pattern for [Sharer], use [Sharer::builder] to instantiate.
@@ -74,9 +76,15 @@ impl<'a> Sharer<'a> {
         }
         let hash_op = if verify { add_to_hash } else { noop_hash };
 
-        // Write out the coefficient for each share
+        let mut all_x_values = (1u8..=255).collect::<Vec<u8>>();
+        all_x_values.shuffle(&mut StdRng::from_entropy());
+        let x_values = (0..share_outputs.len())
+            .map(|idx| all_x_values[idx])
+            .collect::<Vec<u8>>();
+
+        // Write out the x value for each share
         for idx in 0..share_outputs.len() {
-            share_outputs[idx].write(&[(idx + 1) as u8])?;
+            share_outputs[idx].write(&[x_values[idx]])?;
         }
         Ok(Self {
             share_outputs,
@@ -84,6 +92,7 @@ impl<'a> Sharer<'a> {
             hash_op,
             hasher: verify.then_some(Sha3_512::new()),
             bytes_shared: 0,
+            x_values,
         })
     }
 
@@ -109,10 +118,10 @@ impl<'a> Sharer<'a> {
         let bytes_shared = bytes.len();
         (self.hash_op)(&mut self.hasher, bytes);
 
-        for (share_list, output) in from_secrets_compressed(
+        for (share_list, output) in from_secrets_compressed_inner(
             data.as_ref(),
             self.shares_required,
-            self.get_shares_to_create(),
+            &self.x_values,
             None,
         )?
         .into_iter()
