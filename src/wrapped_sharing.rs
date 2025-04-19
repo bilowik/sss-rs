@@ -669,12 +669,27 @@ mod tests {
     }
 
     #[test]
+    fn equal_shares_create_and_required() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 5;
+        let num_shares_required = 5;
+        let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
+        let recon_secret = reconstruct(&shares[0..3], true).unwrap();
+
+        assert_eq!(secret, recon_secret);
+    }
+
+    #[test]
     fn max_shares_create() {
         let secret = vec![10, 20, 30, 50];
         let num_shares = 255;
         let num_shares_required = 3;
         let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
         let recon_secret = reconstruct(&shares[0..3], true).unwrap();
+
+        assert_eq!(secret, recon_secret);
+
+        let recon_secret = reconstruct(&shares[252..255], true).unwrap();
 
         assert_eq!(secret, recon_secret);
     }

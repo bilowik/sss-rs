@@ -339,6 +339,10 @@ mod tests {
             basic_single_value(secret, shares_to_create, shares_required);
         }
     }
+    #[test]
+    fn singe_value_max_shares() {
+        basic_single_value(78, 254, 254);
+    }
 
     fn basic_single_value(secret: u8, shares_to_create: u8, shares_required: u8) {
         /* Was used to find an infinite loop, no longer needed, but keeping for future reference
@@ -356,7 +360,16 @@ mod tests {
     #[test]
     fn compressed() {
         let secret = vec![10, 20, 30, 40, 50];
-        let n = 3;
+        let n = 5;
+        let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
+        let recon = reconstruct_secrets_compressed(shares).unwrap();
+        assert_eq!(secret, recon);
+    }
+
+    #[test]
+    fn compressed_max_shares() {
+        let secret = vec![10, 20, 30, 40, 50];
+        let n = 254;
         let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
         let recon = reconstruct_secrets_compressed(shares).unwrap();
         assert_eq!(secret, recon);
