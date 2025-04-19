@@ -2,7 +2,7 @@
 //! should be utilized, otherwise these functions are useful for implementing a custom abstraction/wrapper.
 use crate::geometry::{Coeff, GaloisPolynomial};
 use rand::rngs::StdRng;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{seq::SliceRandom, Rng, RngCore, SeedableRng};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
@@ -128,6 +128,96 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + S
     Ok(result)
 }
 
+pub(crate) fn from_secrets_compressed_inner<T: AsRef<[u8]>, U: AsRef<[u8]>>(
+    secret: T,
+    shares_required: u8,
+    x_values: U,
+    rand: Option<&mut dyn RngCore>,
+) -> Result<Vec<Vec<u8>>, Error> {
+    let secret = secret.as_ref();
+    let shares_to_create = x_values.as_ref().len() as u8;
+
+    if shares_required > shares_to_create {
+        return Err(Error::UnreconstructableSecret(
+            shares_to_create,
+            shares_required,
+        ));
+    }
+
+    if shares_to_create == 0 {
+        return Err(Error::InvalidNumberOfShares);
+    }
+
+    let mut rng: Box<dyn RngCore> = match rand {
+        Some(rng) => Box::new(rng),
+        None => Box::new(StdRng::from_entropy()),
+    };
+
+    // Pre-generate the coefficients together so we can avoid sending dyn RngCore between threads.
+    // This is probably more efficient than the (secret.len() * shares_to_create) calls to rng.gen().
+    let mut coeffs: Vec<u8> = Vec::with_capacity(secret.len() * shares_to_create as usize);
+
+    // This is safe bc rng.fill() will write to every index and we are setting the len to the
+    // exact capacity we set prior.
+    //
+    // This is more efficient than doing secret.len() * shares_to_create loops of
+    // rng.gen().
+    unsafe { coeffs.set_len(secret.len() * shares_to_create as usize) };
+    rng.fill(coeffs.as_mut_slice());
+
+    // Create the vecs for each share.
+    let mut shares_list = x_values
+        .as_ref()
+        .iter()
+        .map(|x_value| (x_value, Vec::with_capacity(secret.len() + 1)))
+        .map(|(x_value, mut v)| {
+            // Unwrap is safe here since we have already ensured shares_to_create <= 255.
+
+            // This is safe bc we are guaranteed to write to every index and the len we are
+            // setting is the exact capacity we just set prior.
+            unsafe { v.set_len(secret.len() + 1) };
+            v[0] = *x_value; // This is the x coefficient of each share
+            v
+        })
+        .collect::<Vec<Vec<u8>>>();
+
+    // Need to send the ptr between threads which is safe here since we guarantee
+    // that no two threads will read nor write to the same index.
+    let shares_list_ptr: isize = unsafe { transmute(shares_list.as_mut_ptr()) };
+
+    let share_iter = |(byte_idx, s): (usize, &u8)| {
+        let mut share_poly = GaloisPolynomial::new();
+        share_poly.set_coeff(Coeff(*s), 0);
+        for i in 1..(shares_required as usize) {
+            let curr_co = coeffs[(byte_idx * i) + i];
+            share_poly.set_coeff(Coeff(curr_co), i);
+        }
+        for share_idx in 0..shares_to_create {
+            // The following is safe bc we guarantee that no two threads will read nor write
+            // to the same index.
+            unsafe {
+                let share_list = transmute::<isize, *mut Vec<u8>>(shares_list_ptr)
+                    .add(share_idx as usize)
+                    .as_mut()
+                    .unwrap();
+                let x = share_list[0];
+                share_list[byte_idx + 1] = share_poly.get_y_value(x);
+            }
+        }
+    };
+
+    #[cfg(feature = "rayon")]
+    if secret.len() < PAR_CUTOFF_SHARING {
+        secret.iter().enumerate().for_each(share_iter);
+    } else {
+        secret.par_iter().enumerate().for_each(share_iter);
+    }
+    #[cfg(not(feature = "rayon"))]
+    secret.iter().enumerate().for_each(share_iter);
+
+    Ok(shares_list)
+}
+
 /// Wrapper around its corresponding share function but deduplicates the x-value
 /// from all the points to reduce the size of the share.
 ///
@@ -158,69 +248,21 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
         return Err(Error::InvalidNumberOfShares);
     }
 
-    let mut rng: Box<dyn RngCore> = match rand {
-        Some(rng) => Box::new(rng),
-        None => Box::new(StdRng::from_entropy()),
-    };
+    let mut all_x_values = (1u8..255).collect::<Vec<u8>>();
 
-    // Pre-generate the coefficients together so we can avoid sending dyn RngCore between threads.
-    // This is probably more efficient than the (secret.len() * shares_to_create) calls to rng.gen().
-    let mut coeffs: Vec<u8> = Vec::with_capacity(secret.len() * shares_to_create as usize);
+    // Due to borrowing rules and trying to avoid a signature change,
+    // we have to initialize this here so we can pass it as a reference
+    // for when rand is None.
+    let mut std_rng = StdRng::from_entropy();
 
-    // This is safe bc rng.fill() will write to every index and we are setting the len to the
-    // exact capacity we set prior.
-    //
-    // This is more efficient than doing secret.len() * shares_to_create loops of
-    // rng.gen().
-    unsafe { coeffs.set_len(secret.len() * shares_to_create as usize) };
-    rng.fill(coeffs.as_mut_slice());
+    let rng = rand.or_else(|| Some(&mut std_rng)).unwrap();
+    all_x_values.shuffle(rng);
 
-    // Create the vecs for each share.
-    let mut shares_list = (0..shares_to_create)
-        .map(|_| Vec::with_capacity(secret.len() + 1))
-        .enumerate()
-        .map(|(i, mut v)| {
-            // This is safe bc we are guaranteed to write to every index and the len we are
-            // setting is the exact capacity we just set prior.
-            unsafe { v.set_len(secret.len() + 1) };
-            v[0] = (i as u8) + 1; // This is the x coefficient of each share
-            v
-        })
-        .collect::<Vec<Vec<u8>>>();
+    let x_values = (0..shares_to_create)
+        .map(|v| all_x_values[v as usize])
+        .collect::<Vec<u8>>();
 
-    // Need to send the ptr between threads which is safe here since we guarantee
-    // that no two threads will read nor write to the same index.
-    let shares_list_ptr: isize = unsafe { transmute(shares_list.as_mut_ptr()) };
-
-    let share_iter = |(idx, s): (usize, &u8)| {
-        let mut share_poly = GaloisPolynomial::new();
-        share_poly.set_coeff(Coeff(*s), 0);
-        for i in 1..(shares_required as usize) {
-            let curr_co = coeffs[(idx * i) + i];
-            share_poly.set_coeff(Coeff(curr_co), i);
-        }
-        for x in 0..shares_to_create {
-            // The following is safe bc we guarantee that no two threads will read nor write
-            // to the same index.
-            unsafe {
-                transmute::<isize, *mut Vec<u8>>(shares_list_ptr)
-                    .add(x as usize)
-                    .as_mut()
-                    .unwrap()[idx + 1] = share_poly.get_y_value(x + 1);
-            }
-        }
-    };
-
-    #[cfg(feature = "rayon")]
-    if secret.len() < PAR_CUTOFF_SHARING {
-        secret.iter().enumerate().for_each(share_iter);
-    } else {
-        secret.par_iter().enumerate().for_each(share_iter);
-    }
-    #[cfg(not(feature = "rayon"))]
-    secret.iter().enumerate().for_each(share_iter);
-
-    Ok(shares_list)
+    from_secrets_compressed_inner(secret, shares_required, x_values, Some(rng))
 }
 
 /// Wrapper around its [reconstruct_secrets], accepts shares created by [from_secrets_compressed]

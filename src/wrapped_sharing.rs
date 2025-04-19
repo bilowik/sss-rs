@@ -483,7 +483,7 @@ pub fn reconstruct_buffered_dyn<'a, T: Write, U: AsMut<[Box<dyn Read + 'a>]> + '
     verify: bool,
     buf_size: Option<usize>,
 ) -> Result<u64, Error> {
-    // We can either require AsMut, or IntoIterator here. Unusre of which is most 
+    // We can either require AsMut, or IntoIterator here. Unusre of which is most
     // flexible for expected uses cases. We cannot use AsRef here bc Read is not
     // implemented for &Box<dyn Read>.
     let mut reconstructor = Reconstructor::new(secret_dest, verify);
