@@ -654,18 +654,31 @@ impl From<std::io::Error> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use itertools::Itertools;
     use rand::{thread_rng, Rng};
     use std::io::{Cursor, Seek};
 
     #[test]
     fn base_functions() {
         let secret = vec![10, 20, 30, 50];
-        let num_shares = 6;
+        let num_shares = 3;
         let num_shares_required = 3;
         let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
-        let recon_secret = reconstruct(&shares[0..3], true).unwrap();
-
+        let recon_secret = reconstruct(&shares, true).unwrap();
         assert_eq!(secret, recon_secret);
+    }
+
+    #[test]
+    fn all_combination_recon() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 7;
+        let num_shares_required = 3;
+        let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
+
+        shares
+            .into_iter()
+            .combinations(3)
+            .for_each(|shares| assert_eq!(secret, reconstruct(&shares, true).unwrap()));
     }
 
     #[test]
@@ -674,7 +687,7 @@ mod tests {
         let num_shares = 5;
         let num_shares_required = 5;
         let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
-        let recon_secret = reconstruct(&shares[0..3], true).unwrap();
+        let recon_secret = reconstruct(&shares, true).unwrap();
 
         assert_eq!(secret, recon_secret);
     }
@@ -700,7 +713,7 @@ mod tests {
         let num_shares = 255;
         let num_shares_required = 255;
         let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
-        let recon_secret = reconstruct(&shares[0..3], true).unwrap();
+        let recon_secret = reconstruct(&shares, true).unwrap();
 
         assert_eq!(secret, recon_secret);
     }
