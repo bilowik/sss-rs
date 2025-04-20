@@ -321,6 +321,7 @@ impl std::error::Error for Error {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use itertools::Itertools;
     use rand::rngs::StdRng;
     use rand::Rng;
     use rand::SeedableRng;
@@ -367,6 +368,20 @@ mod tests {
     }
 
     #[test]
+    fn all_combination_recon() {
+        let secret = vec![10, 20, 30, 40, 50];
+        let shares_required = 4;
+        let shares_to_create = 10;
+        let shares =
+            from_secrets_compressed(&secret, shares_required, shares_to_create, None).unwrap();
+
+        shares
+            .into_iter()
+            .combinations(shares_required as usize)
+            .for_each(|shares| assert_eq!(secret, reconstruct_secrets_compressed(shares).unwrap()));
+    }
+
+    #[test]
     fn compressed_max_shares() {
         let secret = vec![10, 20, 30, 40, 50];
         let n = 254;
@@ -398,8 +413,10 @@ mod tests {
         let cre = 8;
         let shares = from_secrets_compressed(&secret, req, cre, None).unwrap();
 
-        let recon = reconstruct_secrets_compressed(&shares[0..6]).unwrap();
-        assert_eq!(secret, recon);
+        for count in req..=cre {
+            let recon = reconstruct_secrets_compressed(&shares[0..(count as usize)]).unwrap();
+            assert_eq!(secret, recon);
+        }
     }
 
     // Technically pointless since the created share is just the secret, but this bound
