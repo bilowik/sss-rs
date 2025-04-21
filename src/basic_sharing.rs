@@ -2,7 +2,7 @@
 //! should be utilized, otherwise these functions are useful for implementing a custom abstraction/wrapper.
 use crate::geometry::{Coeff, GaloisPolynomial};
 use rand::rngs::StdRng;
-use rand::{seq::SliceRandom, Rng, RngCore, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
@@ -248,18 +248,16 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
         return Err(Error::InvalidNumberOfShares);
     }
 
-    let mut all_x_values = (1u8..255).collect::<Vec<u8>>();
-
     // Due to borrowing rules and trying to avoid a signature change,
     // we have to initialize this here so we can pass it as a reference
     // for when rand is None.
     let mut std_rng = StdRng::from_entropy();
 
     let rng = rand.or_else(|| Some(&mut std_rng)).unwrap();
-    all_x_values.shuffle(rng);
 
-    let x_values = (0..shares_to_create)
-        .map(|v| all_x_values[v as usize])
+    let x_values = rand::seq::index::sample(rng, 254, shares_to_create as usize)
+        .iter()
+        .map(|v| v as u8 + 1) // +1 here since sample includes 0 and we don't want 0.
         .collect::<Vec<u8>>();
 
     from_secrets_compressed_inner(secret, shares_required, x_values, Some(rng))
