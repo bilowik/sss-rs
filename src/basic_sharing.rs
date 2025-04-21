@@ -248,12 +248,18 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
         return Err(Error::InvalidNumberOfShares);
     }
 
-    // Due to borrowing rules and trying to avoid a signature change,
-    // we have to initialize this here so we can pass it as a reference
-    // for when rand is None.
-    let mut std_rng = StdRng::from_entropy();
+    // Messy, but to avoid changing the function signature for now we
+    // have to jump through some hoops to avoid borrowing/lifetime
+    // issues.
+    let mut std_rng: StdRng;
+    let rng: &mut dyn RngCore;
 
-    let rng = rand.or_else(|| Some(&mut std_rng)).unwrap();
+    if let Some(provided_rng) = rand {
+        rng = provided_rng;
+    } else {
+        std_rng = StdRng::from_entropy();
+        rng = &mut std_rng;
+    };
 
     let x_values = rand::seq::index::sample(rng, 254, shares_to_create as usize)
         .iter()
