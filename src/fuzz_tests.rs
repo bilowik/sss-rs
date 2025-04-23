@@ -4,7 +4,7 @@ use rand::{seq::SliceRandom, thread_rng, Rng};
 
 const FUZZ_COUNT: usize = 100_000;
 const SECRET_LEN_MIN: usize = 0;
-const SECRET_LEN_MAX: usize = 1;
+const SECRET_LEN_MAX: usize = 10000;
 
 #[test]
 fn fuzz_basic_sharing() {
@@ -26,7 +26,7 @@ fn fuzz_basic_sharing() {
 
         let selected_shares = &shares[0..shares_to_use_for_recon];
 
-        let recon_secret = reconstruct_secrets_compressed(selected_shares);
+        let recon_secret = reconstruct_secrets_compressed(selected_shares).unwrap();
         assert_eq!(secret, recon_secret);
     }
 }
