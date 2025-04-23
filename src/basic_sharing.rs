@@ -124,7 +124,6 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + S
     }
     #[cfg(not(feature = "rayon"))]
     (0..len).for_each(recon_iter);
-
     Ok(result)
 }
 
@@ -296,7 +295,7 @@ fn expand_share<T: AsRef<[u8]>>(share: T) -> Vec<(u8, u8)> {
     share[1..].iter().map(|y| (x_value, *y)).collect()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error {
     /// shares_required was < 2
     InvalidNumberOfShares,
