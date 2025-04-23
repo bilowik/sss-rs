@@ -261,7 +261,7 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
         rng = &mut std_rng;
     };
 
-    let x_values = rand::seq::index::sample(rng, 254, shares_to_create as usize)
+    let x_values = rand::seq::index::sample(rng, 255, shares_to_create as usize)
         .iter()
         .map(|v| v as u8 + 1) // +1 here since sample includes 0 and we don't want 0.
         .collect::<Vec<u8>>();
@@ -346,7 +346,7 @@ mod tests {
     }
     #[test]
     fn singe_value_max_shares() {
-        basic_single_value(78, 254, 254);
+        basic_single_value(78, 255, 255);
     }
 
     fn basic_single_value(secret: u8, shares_to_create: u8, shares_required: u8) {
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn compressed_max_shares() {
         let secret = vec![10, 20, 30, 40, 50];
-        let n = 254;
+        let n = 255;
         let shares = from_secrets_compressed(&secret, n, n, None).unwrap();
         let recon = reconstruct_secrets_compressed(shares).unwrap();
         assert_eq!(secret, recon);
