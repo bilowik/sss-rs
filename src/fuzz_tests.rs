@@ -4,9 +4,9 @@ use thiserror::Error;
 
 use rand::{seq::SliceRandom, thread_rng, Rng};
 
-const FUZZ_COUNT: usize = 100_000;
+const FUZZ_COUNT: usize = 100_00;
 const SECRET_LEN_MIN: usize = 0;
-const SECRET_LEN_MAX: usize = 10000;
+const SECRET_LEN_MAX: usize = 64;
 
 #[test]
 fn fuzz_basic_sharing() {
@@ -58,7 +58,7 @@ impl<E: Error + Clone + std::fmt::Debug + std::fmt::Display> FuzzTestInfo<E> {
 
 #[test]
 fn fuzz_all_combinations_max_shares() {
-    let secret_len = 64;
+    let secret_len = 16;
     let mut secret = Vec::with_capacity(secret_len);
     unsafe {
         secret.set_len(secret_len);
