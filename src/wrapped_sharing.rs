@@ -6,7 +6,8 @@
 //!
 //! For implementing custom wrappers or abstractions, [basic_sharing][crate::basic_sharing]
 //! functions can be utilized if finer-tuned control is needed.
-use crate::basic_sharing::{from_secrets_compressed, reconstruct_secrets_compressed};
+use crate::basic_sharing::{from_secrets_compressed_inner, reconstruct_secrets_compressed};
+use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
 use sha3::{Digest, Sha3_512};
 use std::io::{BufRead, BufReader, Read, Write};
 
@@ -43,6 +44,7 @@ pub struct Sharer<'a> {
     hasher: Option<Sha3_512>,
     hash_op: fn(&mut Option<Sha3_512>, &[u8]),
     shares_required: u8,
+    x_values: Vec<u8>,
 }
 
 /// Builder pattern for [Sharer], use [Sharer::builder] to instantiate.
@@ -74,9 +76,15 @@ impl<'a> Sharer<'a> {
         }
         let hash_op = if verify { add_to_hash } else { noop_hash };
 
-        // Write out the coefficient for each share
+        let mut all_x_values = (1u8..=255).collect::<Vec<u8>>();
+        all_x_values.shuffle(&mut StdRng::from_entropy());
+        let x_values = (0..share_outputs.len())
+            .map(|idx| all_x_values[idx])
+            .collect::<Vec<u8>>();
+
+        // Write out the x value for each share
         for idx in 0..share_outputs.len() {
-            share_outputs[idx].write(&[(idx + 1) as u8])?;
+            share_outputs[idx].write(&[x_values[idx]])?;
         }
         Ok(Self {
             share_outputs,
@@ -84,6 +92,7 @@ impl<'a> Sharer<'a> {
             hash_op,
             hasher: verify.then_some(Sha3_512::new()),
             bytes_shared: 0,
+            x_values,
         })
     }
 
@@ -109,10 +118,10 @@ impl<'a> Sharer<'a> {
         let bytes_shared = bytes.len();
         (self.hash_op)(&mut self.hasher, bytes);
 
-        for (share_list, output) in from_secrets_compressed(
+        for (share_list, output) in from_secrets_compressed_inner(
             data.as_ref(),
             self.shares_required,
-            self.get_shares_to_create(),
+            &self.x_values,
             None,
         )?
         .into_iter()
@@ -483,7 +492,7 @@ pub fn reconstruct_buffered_dyn<'a, T: Write, U: AsMut<[Box<dyn Read + 'a>]> + '
     verify: bool,
     buf_size: Option<usize>,
 ) -> Result<u64, Error> {
-    // We can either require AsMut, or IntoIterator here. Unusre of which is most 
+    // We can either require AsMut, or IntoIterator here. Unusre of which is most
     // flexible for expected uses cases. We cannot use AsRef here bc Read is not
     // implemented for &Box<dyn Read>.
     let mut reconstructor = Reconstructor::new(secret_dest, verify);
@@ -645,16 +654,66 @@ impl From<std::io::Error> for Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use itertools::Itertools;
     use rand::{thread_rng, Rng};
     use std::io::{Cursor, Seek};
 
     #[test]
     fn base_functions() {
         let secret = vec![10, 20, 30, 50];
-        let num_shares = 6;
+        let num_shares = 3;
+        let num_shares_required = 3;
+        let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
+        let recon_secret = reconstruct(&shares, true).unwrap();
+        assert_eq!(secret, recon_secret);
+    }
+
+    #[test]
+    fn all_combination_recon() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 7;
+        let num_shares_required = 3;
+        let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
+
+        shares
+            .into_iter()
+            .combinations(3)
+            .for_each(|shares| assert_eq!(secret, reconstruct(&shares, true).unwrap()));
+    }
+
+    #[test]
+    fn equal_shares_create_and_required() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 5;
+        let num_shares_required = 5;
+        let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
+        let recon_secret = reconstruct(&shares, true).unwrap();
+
+        assert_eq!(secret, recon_secret);
+    }
+
+    #[test]
+    fn max_shares_create() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 255;
         let num_shares_required = 3;
         let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
         let recon_secret = reconstruct(&shares[0..3], true).unwrap();
+
+        assert_eq!(secret, recon_secret);
+
+        let recon_secret = reconstruct(&shares[252..255], true).unwrap();
+
+        assert_eq!(secret, recon_secret);
+    }
+
+    #[test]
+    fn max_shares_create_and_required() {
+        let secret = vec![10, 20, 30, 50];
+        let num_shares = 255;
+        let num_shares_required = 255;
+        let shares = share(&secret, num_shares_required, num_shares, true).unwrap();
+        let recon_secret = reconstruct(&shares, true).unwrap();
 
         assert_eq!(secret, recon_secret);
     }
