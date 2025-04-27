@@ -1,3 +1,22 @@
+## sss-rs 0.13.0 04/27/2025
+### General
+- More test coverage, specifically utilizing itertools to ensure that every X subset of Y shares can correctly reproduce the secret
+- An additional fuzz test which specifically tests sharing and reconstructing some secret with X required shares, 255 shares created, and Y shares used for
+reconstruction where 2 <= X <= 255 and X <= Y <= 255. 
+- X-values generated for shares are not fully random and not incremental. 
+- Removal of various previously-deprecated functions.
+
+### Wrapped sharing
+- (Potentially Breaking) Removed generic T param from Reconstructor to put it in line with the Sharer.
+  - The generic parameter is instead defined on the `new()` method. Usage of the `new()` method is unchanged 
+    so this is only breaking if you explicitly utilized the `Reconstructor<T>` when defining a variable or argument. 
+- X-values used in share generation will be randomized (since this utilizes functionality from basic_sharing)
+
+### Basic sharing
+- Randomly generate the X-values used during share generation, as opposed to incremental X-values.
+  - This provides less information to an attacker, but it also entirely backwards compatible with previously 
+    generated shares. 
+
 ## sss-rs 0.12.0 06/17/2023
 Bumping due to a few missing deprecation notices and some likely-backwards-compatible generics improvements. There
 was also the unhandled case where 0 shares were sent to reconstruct_secrets and would cause a panic, so it's call
