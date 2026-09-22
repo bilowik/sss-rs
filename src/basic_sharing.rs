@@ -2,7 +2,7 @@
 //! should be utilized, otherwise these functions are useful for implementing a custom abstraction/wrapper.
 use crate::geometry::{Coeff, GaloisPolynomial};
 use rand::rngs::StdRng;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{Rng, RngExt};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
@@ -28,7 +28,7 @@ const PAR_CUTOFF_RECON: usize = 4096;
 /// shares are enough to recreate the secret. If < shares_required, it's automatically bumped up.
 ///
 /// **rand:** The rng source for the generated coefficients in the sharing process.
-/// The default is StdRng::from_entropy()
+/// The default is rand::make_rng::<StdRng>()
 ///
 /// **NOTE: Using predictable RNG can be a security risk. If unsure, use None.**
 ///
@@ -36,7 +36,7 @@ pub fn from_secret(
     secret: u8,
     shares_required: u8,
     shares_to_create: u8,
-    rand: Option<&mut dyn RngCore>,
+    rand: Option<&mut dyn Rng>,
 ) -> Result<Vec<(u8, u8)>, Error> {
     Ok(
         from_secrets_compressed(&[secret], shares_required, shares_to_create, rand)?
@@ -64,7 +64,7 @@ pub fn from_secrets<T: AsRef<[u8]>>(
     secret: T,
     shares_required: u8,
     shares_to_create: u8,
-    rand: Option<&mut dyn RngCore>,
+    rand: Option<&mut dyn Rng>,
 ) -> Result<Vec<Vec<(u8, u8)>>, Error> {
     Ok(
         from_secrets_compressed(secret, shares_required, shares_to_create, rand)?
@@ -131,7 +131,7 @@ pub(crate) fn from_secrets_compressed_inner<T: AsRef<[u8]>, U: AsRef<[u8]>>(
     secret: T,
     shares_required: u8,
     x_values: U,
-    rand: Option<&mut dyn RngCore>,
+    rand: Option<&mut dyn Rng>,
 ) -> Result<Vec<Vec<u8>>, Error> {
     let secret = secret.as_ref();
     let shares_to_create = x_values.as_ref().len() as u8;
@@ -147,12 +147,12 @@ pub(crate) fn from_secrets_compressed_inner<T: AsRef<[u8]>, U: AsRef<[u8]>>(
         return Err(Error::InvalidNumberOfShares);
     }
 
-    let mut rng: Box<dyn RngCore> = match rand {
+    let mut rng: Box<dyn Rng> = match rand {
         Some(rng) => Box::new(rng),
-        None => Box::new(StdRng::from_entropy()),
+        None => Box::new(rand::make_rng::<StdRng>()),
     };
 
-    // Pre-generate the coefficients together so we can avoid sending dyn RngCore between threads.
+    // Pre-generate the coefficients together so we can avoid sending dyn Rng between threads.
     // This is probably more efficient than the (secret.len() * shares_to_create) calls to rng.gen().
     let mut coeffs: Vec<u8> = Vec::with_capacity(secret.len() * shares_to_create as usize);
 
@@ -233,7 +233,7 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
     secret: T,
     shares_required: u8,
     shares_to_create: u8,
-    rand: Option<&mut dyn RngCore>,
+    rand: Option<&mut dyn Rng>,
 ) -> Result<Vec<Vec<u8>>, Error> {
     let secret = secret.as_ref();
     if shares_required > shares_to_create {
@@ -251,12 +251,12 @@ pub fn from_secrets_compressed<T: AsRef<[u8]>>(
     // have to jump through some hoops to avoid borrowing/lifetime
     // issues.
     let mut std_rng: StdRng;
-    let rng: &mut dyn RngCore;
+    let rng: &mut dyn Rng;
 
     if let Some(provided_rng) = rand {
         rng = provided_rng;
     } else {
-        std_rng = StdRng::from_entropy();
+        std_rng = rand::make_rng::<StdRng>();
         rng = &mut std_rng;
     };
 
@@ -326,7 +326,6 @@ mod tests {
     use super::*;
     use itertools::Itertools;
     use rand::rngs::StdRng;
-    use rand::Rng;
     use rand::SeedableRng;
 
     #[test]
@@ -336,9 +335,9 @@ mod tests {
         let mut rand = StdRng::seed_from_u64(123u64);
 
         for _ in 0..num_iters {
-            let secret: u8 = rand.gen_range(1..256) as u8;
-            let shares_required: u8 = rand.gen_range(2..10);
-            let shares_to_create: u8 = shares_required + rand.gen_range(0..6);
+            let secret: u8 = rand.random_range(1..256) as u8;
+            let shares_required: u8 = rand.random_range(2..10);
+            let shares_to_create: u8 = shares_required + rand.random_range(0..6);
 
             basic_single_value(secret, shares_to_create, shares_required);
         }

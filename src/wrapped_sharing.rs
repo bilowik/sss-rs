@@ -7,7 +7,7 @@
 //! For implementing custom wrappers or abstractions, [basic_sharing][crate::basic_sharing]
 //! functions can be utilized if finer-tuned control is needed.
 use crate::basic_sharing::{from_secrets_compressed_inner, reconstruct_secrets_compressed};
-use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+use rand::{rngs::StdRng, seq::SliceRandom};
 use sha3::{Digest, Sha3_512};
 use std::io::{BufRead, BufReader, Read, Write};
 
@@ -77,7 +77,7 @@ impl<'a> Sharer<'a> {
         let hash_op = if verify { add_to_hash } else { noop_hash };
 
         let mut all_x_values = (1u8..=255).collect::<Vec<u8>>();
-        all_x_values.shuffle(&mut StdRng::from_entropy());
+        all_x_values.shuffle(&mut rand::make_rng::<StdRng>());
         let x_values = (0..share_outputs.len())
             .map(|idx| all_x_values[idx])
             .collect::<Vec<u8>>();
@@ -655,7 +655,7 @@ impl From<std::io::Error> for Error {
 mod tests {
     use super::*;
     use itertools::Itertools;
-    use rand::{thread_rng, Rng};
+    use rand::RngExt;
     use std::io::{Cursor, Seek};
 
     #[test]
@@ -815,7 +815,7 @@ mod tests {
     fn sharer_reconstructor_bad_shares() {
         let mut recon_dest = Cursor::new(Vec::new());
         let rando_shares = (0..2)
-            .map(|_| thread_rng().gen::<[u8; 32]>())
+            .map(|_| rand::rng().random::<[u8; 32]>())
             .collect::<Vec<[u8; 32]>>();
         let mut reconstructor = Reconstructor::new(&mut recon_dest, true);
         reconstructor.update(&rando_shares).unwrap();
@@ -832,7 +832,7 @@ mod tests {
         let secret_size = 8192;
         let mut secret = Cursor::new(
             (0..(secret_size / 32))
-                .map(|_| thread_rng().gen::<[u8; 32]>())
+                .map(|_| rand::rng().random::<[u8; 32]>())
                 .fold(Vec::with_capacity(secret_size), |mut acc, v| {
                     acc.extend(v);
                     acc
