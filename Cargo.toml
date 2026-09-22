@@ -16,7 +16,7 @@ travis-ci = { repository = "https://travis-ci.com/bilowik/sss-rs", branch = "mas
 
 [dependencies]
 rand = "0.10.3"
-lazy_static = "1.3.0"
+lazy_static = "1.5.0"
 sha3 = "0.10.6"
 hex = "0.4.3"
 galois_2p8 = "0.1.2"
