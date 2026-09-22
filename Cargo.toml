@@ -1,6 +1,6 @@
 [package]
 name = "sss-rs"
-version = "0.12.1"
+version = "0.13.1"
 authors = ["bilowik"]
 edition = "2018"
 description = "A secret sharing scheme implemented in Rust"
