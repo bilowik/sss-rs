@@ -90,41 +90,29 @@ pub fn reconstruct_secrets<U: AsRef<[(u8, u8)]> + Sync + Send, T: AsRef<[U]> + S
 
     let share_lists = share_lists.as_ref();
     let len = share_lists[0].as_ref().len();
-    let mut result = Vec::with_capacity(len);
-    unsafe {
-        // Safe bc we are guaranteed to write over every byte.
-        result.set_len(len);
-    }
-
-    // Shhhhh pretend you didn't see this. (Safe bc it's just a ptr <--> isize conversion.)
-    let result_ptr: isize = unsafe { transmute(result.as_mut_ptr()) };
 
     let recon_iter = |idx: usize| {
-        unsafe {
-            // SHHHHHHHHHH it's okay I PROMISE.
-            // (Safe bc it is guaranteed that no thread will write to the same address.)
-            transmute::<isize, *mut u8>(result_ptr)
-                .add(idx)
-                .write(reconstruct_secret(
-                    share_lists
-                        .iter()
-                        .map(|s| s.as_ref()[idx])
-                        .collect::<Vec<(u8, u8)>>(),
-                ));
-        }
+        reconstruct_secret(
+            share_lists
+                .iter()
+                .map(|s| s.as_ref()[idx])
+                .collect::<Vec<(u8, u8)>>(),
+        )
     };
 
     #[cfg(feature = "rayon")]
     if len < PAR_CUTOFF_RECON {
         // This is the cutoff point where parallelization overhead exceeds the performance gain
         // from the paralleization.
-        (0..len).for_each(recon_iter);
+        Ok((0..len).map(recon_iter).collect::<Vec<u8>>())
     } else {
-        (0..len).into_par_iter().for_each(recon_iter);
+        Ok((0..len)
+            .into_par_iter()
+            .map(recon_iter)
+            .collect::<Vec<u8>>())
     }
     #[cfg(not(feature = "rayon"))]
-    (0..len).for_each(recon_iter);
-    Ok(result)
+    Ok((0..len).for_each(recon_iter))
 }
 
 pub(crate) fn from_secrets_compressed_inner<T: AsRef<[u8]>, U: AsRef<[u8]>>(
