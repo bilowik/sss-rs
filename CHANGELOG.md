@@ -1,3 +1,6 @@
+## sss-rs 0.12.1 09/22/2026
+Dependency bumps.
+
 ## sss-rs 0.12.0 06/17/2023
 Bumping due to a few missing deprecation notices and some likely-backwards-compatible generics improvements. There
 was also the unhandled case where 0 shares were sent to reconstruct_secrets and would cause a panic, so it's call
