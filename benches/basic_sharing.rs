@@ -1,11 +1,13 @@
-use rand::{thread_rng, Rng};
+use rand::RngExt;
 use sss_rs::basic_sharing::{from_secrets_compressed, reconstruct_secrets_compressed};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
 macro_rules! share_func {
     ($c:ident, $size:literal, $shares_required:literal, $shares_to_create:literal) => {{
-        let bytes = (0..$size).map(|_| thread_rng().gen()).collect::<Vec<u8>>();
+        let bytes = (0..$size)
+            .map(|_| rand::rng().random())
+            .collect::<Vec<u8>>();
         $c.bench_function(
             &format!(
                 "basic_sharing_{}byte_{}_{}",
@@ -22,7 +24,9 @@ macro_rules! share_func {
 }
 macro_rules! reconstruct_func {
     ($c:ident, $size:literal, $shares_required:literal, $shares_to_create:literal) => {{
-        let bytes = (0..$size).map(|_| thread_rng().gen()).collect::<Vec<u8>>();
+        let bytes = (0..$size)
+            .map(|_| rand::rng().random())
+            .collect::<Vec<u8>>();
         let shares =
             from_secrets_compressed(&bytes, $shares_required, $shares_to_create, None).unwrap();
         $c.bench_function(

@@ -1,18 +1,18 @@
-use rand::{thread_rng, Rng};
+use rand::RngExt;
 use sss_rs::wrapped_sharing::{Reconstructor, Sharer};
 use std::io::{Cursor, Seek};
 
-#[cfg(wrapped_sharing_bench_use_disk_io)]
+#[cfg(feature = "wrapped_sharing_bench_use_disk_io")]
 use tempfile::tempfile;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-#[cfg(wrapped_sharing_bench_use_disk_io)]
+#[cfg(feature = "wrapped_sharing_bench_use_disk_io")]
 fn get_writable() -> File {
     tempfile().unwrap()
 }
 
-#[cfg(not(wrapped_sharing_bench_use_disk_io))]
+#[cfg(not(feature = "wrapped_sharing_bench_use_disk_io"))]
 fn get_writable() -> Cursor<Vec<u8>> {
     Cursor::new(Vec::new())
 }
@@ -21,7 +21,7 @@ macro_rules! share_func {
     ($c:ident, $size:expr, $chunk_size:expr, $shares_required:literal, $shares_to_create:literal) => {{
         let mut bytes = Vec::with_capacity($size);
         unsafe { bytes.set_len($size) }; // For quicker setup for tests.
-        thread_rng().fill(bytes.as_mut_slice());
+        rand::rng().fill(bytes.as_mut_slice());
 
         let mut dest1 = get_writable();
         let mut dest2 = get_writable();
@@ -56,7 +56,7 @@ macro_rules! reconstruct_func {
     ($c:ident, $size:expr, $chunk_size:expr, $shares_required:literal, $shares_to_create:literal) => {{
         let mut bytes = Vec::with_capacity($size);
         unsafe { bytes.set_len($size) }; // For quicker setup for tests.
-        thread_rng().fill(bytes.as_mut_slice());
+        rand::rng().fill(bytes.as_mut_slice());
         let mut dest1 = Cursor::new(Vec::new());
         let mut dest2 = Cursor::new(Vec::new());
         let byte_chunks = bytes.chunks($chunk_size).collect::<Vec<&[u8]>>();
